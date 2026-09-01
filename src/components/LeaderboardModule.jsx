@@ -24,6 +24,7 @@ import {
   computeLeaderboardScores,
   syncLeaderboardToDB
 } from '../lib/supabase';
+import { sanitizeCsvCell } from '../lib/security';
 
 export default function LeaderboardModule({ students = [], courses = [], currentUser }) {
   const [leaderboardData, setLeaderboardData] = useState([]);
@@ -124,21 +125,21 @@ export default function LeaderboardModule({ students = [], courses = [], current
     ];
 
     const rows = filteredLeaderboard.map((item) => [
-      `"${item.rank}"`,
-      `"${(item.student_name || '').replace(/"/g, '""')}"`,
-      `"${item.roll_number || ''}"`,
-      `"${item.course || ''}"`,
-      `"${item.total_score || 0}"`,
-      `"${item.attendance_percentage || 0}%"`,
-      `"${item.punctuality_percentage || 0}%"`,
-      `"${item.grooming_percentage || 0}%"`,
-      `"${item.total_classes || 0}"`,
-      `"${item.present_count || 0}"`,
-      `"${item.absent_count || 0}"`,
-      `"${item.on_time_count || 0}"`,
-      `"${item.late_count || 0}"`,
-      `"${item.well_groomed_count || 0}"`,
-      `"${item.not_groomed_count || 0}"`
+      sanitizeCsvCell(item.rank),
+      sanitizeCsvCell(item.student_name || ''),
+      sanitizeCsvCell(item.roll_number || ''),
+      sanitizeCsvCell(item.course || ''),
+      sanitizeCsvCell(item.total_score || 0),
+      sanitizeCsvCell(`${item.attendance_percentage || 0}%`),
+      sanitizeCsvCell(`${item.punctuality_percentage || 0}%`),
+      sanitizeCsvCell(`${item.grooming_percentage || 0}%`),
+      sanitizeCsvCell(item.total_classes || 0),
+      sanitizeCsvCell(item.present_count || 0),
+      sanitizeCsvCell(item.absent_count || 0),
+      sanitizeCsvCell(item.on_time_count || 0),
+      sanitizeCsvCell(item.late_count || 0),
+      sanitizeCsvCell(item.well_groomed_count || 0),
+      sanitizeCsvCell(item.not_groomed_count || 0)
     ]);
 
     const csvContent =

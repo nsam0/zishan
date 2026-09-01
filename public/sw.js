@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gse-admin-v1';
+const CACHE_NAME = 'gse-admin-v2-secure';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

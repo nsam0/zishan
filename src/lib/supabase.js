@@ -1,64 +1,51 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const SUPABASE_URL = 'https://vznyiuhotopctbssnpjn.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnlpdWhvdG9wY3Ric3NucGpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyOTMyMjQsImV4cCI6MjEwMjg2OTIyNH0.Fs-AwPDYBNkhnvHSxcKmqci6lqLxKAXiyPYNkiOE14A';
+// Read configuration exclusively from Vite environment variables
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn(
+    '[Security Warning] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not defined. Please verify your .env file.'
+  );
+}
 
-const LOCAL_STUDENTS_KEY = 'gse_students_records_v1';
-const LOCAL_COURSES_KEY = 'gse_courses_records_v1';
-const LOCAL_SUBJECTS_KEY = 'gse_subjects_records_v1';
-const LOCAL_STAFF_KEY = 'gse_staff_users_v1';
-const LOCAL_ATTENDANCE_KEY = 'gse_attendance_records_v1';
-const LOCAL_CURRENT_USER_KEY = 'gse_current_auth_user_v1';
-
-// Default initial courses
-const DEFAULT_COURSES = [
-  { id: 'c-1', name: 'Diploma in Hotel Management', description: 'Comprehensive hospitality & hotel operations' },
-  { id: 'c-2', name: 'Diploma in International Hotel Management', description: 'Global hospitality standards & management' },
-  { id: 'c-3', name: 'Degree in Hotel Management', description: '3-Year undergraduate program in hospitality' },
-  { id: 'c-4', name: 'Degree in International Hotel Management', description: 'International bachelor curriculum' },
-  { id: 'c-5', name: 'Culinary Arts', description: 'Professional kitchen training, gastronomy & bakery' },
-];
-
-// Default initial subjects
-const DEFAULT_SUBJECTS = [
-  { id: 's-1', name: 'Food & Beverage Service', code: 'FBS-101', course_name: 'Diploma in Hotel Management' },
-  { id: 's-2', name: 'Front Office Operations', code: 'FO-102', course_name: 'Diploma in Hotel Management' },
-  { id: 's-3', name: 'Housekeeping Management', code: 'HK-103', course_name: 'Diploma in Hotel Management' },
-  { id: 's-4', name: 'Culinary Fundamentals & Bakery', code: 'CUL-104', course_name: 'Culinary Arts' },
-];
-
-// Default admin user
-export const DEFAULT_ADMIN_USER = {
-  id: 'admin-1',
-  name: 'Zishan (Admin)',
-  username: 'zishan@gmail.com',
-  email: 'zishan@gmail.com',
-  role: 'admin',
-};
-
-// Default initial staff demo account
-const DEFAULT_STAFF_USERS = [
-  {
-    id: 'staff-demo-1',
-    name: 'Rahul Sharma',
-    username: 'staff1',
-    email: 'staff1@gmail.com',
-    password: '123',
-    role: 'attendance_staff',
-    assigned_subjects: ['Food & Beverage Service', 'Front Office Operations'],
-    assigned_subject: 'Food & Beverage Service',
-    created_at: new Date().toISOString()
+// Single authenticated Supabase client using public publishable anon key
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
   }
-];
+});
 
-export const SQL_SETUP_SCRIPT = `-- Global Skill Education: Complete Database Tables Setup
--- Run this in Supabase Dashboard -> SQL Editor
+export const SQL_SETUP_SCRIPT = `-- Global Skill Education: Production Database & Least-Privilege RLS Setup
+-- Copy and run this script in Supabase Dashboard -> SQL Editor
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- 1. Students Table
+-- 1. Profiles Table (Linked to auth.users)
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    full_name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'attendance_staff' CHECK (role IN ('admin', 'attendance_staff')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- 2. Staff Subject Assignments Table
+CREATE TABLE IF NOT EXISTS public.staff_subject_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    staff_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    subject_name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_staff_subject UNIQUE (staff_id, subject_name)
+);
+ALTER TABLE public.staff_subject_assignments ENABLE ROW LEVEL SECURITY;
+
+-- 3. Students Table
 CREATE TABLE IF NOT EXISTS public.students (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -69,10 +56,8 @@ CREATE TABLE IF NOT EXISTS public.students (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public all access" ON public.students;
-CREATE POLICY "Allow public all access" ON public.students FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 2. Courses Table
+-- 4. Courses Table
 CREATE TABLE IF NOT EXISTS public.courses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
@@ -80,10 +65,8 @@ CREATE TABLE IF NOT EXISTS public.courses (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public all access on courses" ON public.courses;
-CREATE POLICY "Allow public all access on courses" ON public.courses FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 3. Subjects Table
+-- 5. Subjects Table
 CREATE TABLE IF NOT EXISTS public.subjects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -92,119 +75,8 @@ CREATE TABLE IF NOT EXISTS public.subjects (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.subjects ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public all access on subjects" ON public.subjects;
-CREATE POLICY "Allow public all access on subjects" ON public.subjects FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 4. Staff Users Table
-CREATE TABLE IF NOT EXISTS public.staff_users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    username TEXT NOT NULL UNIQUE,
-    email TEXT DEFAULT '',
-    password TEXT NOT NULL,
-    role TEXT DEFAULT 'attendance_staff',
-    assigned_subjects JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE public.staff_users ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public all access on staff_users" ON public.staff_users;
-CREATE POLICY "Allow public all access on staff_users" ON public.staff_users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
--- 5. Function to automatically create user in Supabase Authentication (auth.users)
-CREATE OR REPLACE FUNCTION public.create_staff_user(
-    staff_name text,
-    staff_username text,
-    staff_email text,
-    staff_password text,
-    staff_role text DEFAULT 'attendance_staff'
-)
-RETURNS json
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, auth, extensions
-AS $$
-DECLARE
-    new_user_id uuid := gen_random_uuid();
-    hashed_pass text;
-BEGIN
-    hashed_pass := crypt(staff_password, gen_salt('bf'));
-
-    IF EXISTS (SELECT 1 FROM auth.users WHERE email = lower(staff_email)) THEN
-        UPDATE auth.users 
-        SET encrypted_password = hashed_pass,
-            raw_user_meta_data = jsonb_build_object('name', staff_name, 'role', staff_role),
-            updated_at = NOW()
-        WHERE email = lower(staff_email);
-        
-        SELECT id INTO new_user_id FROM auth.users WHERE email = lower(staff_email);
-    ELSE
-        INSERT INTO auth.users (
-            instance_id,
-            id,
-            aud,
-            role,
-            email,
-            encrypted_password,
-            email_confirmed_at,
-            raw_app_meta_data,
-            raw_user_meta_data,
-            created_at,
-            updated_at,
-            confirmation_token,
-            recovery_token
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000000',
-            new_user_id,
-            'authenticated',
-            'authenticated',
-            lower(staff_email),
-            hashed_pass,
-            NOW(),
-            '{"provider":"email","providers":["email"]}'::jsonb,
-            jsonb_build_object('name', staff_name, 'role', staff_role),
-            NOW(),
-            NOW(),
-            '',
-            ''
-        );
-    END IF;
-
-    INSERT INTO public.staff_users (
-        id,
-        name,
-        username,
-        email,
-        password,
-        role,
-        created_at
-    ) VALUES (
-        new_user_id,
-        staff_name,
-        lower(staff_username),
-        lower(staff_email),
-        staff_password,
-        staff_role,
-        NOW()
-    )
-    ON CONFLICT (username) DO UPDATE
-    SET name = EXCLUDED.name,
-        email = EXCLUDED.email,
-        password = EXCLUDED.password,
-        role = EXCLUDED.role;
-
-    RETURN json_build_object(
-        'success', true,
-        'user_id', new_user_id,
-        'email', lower(staff_email),
-        'username', lower(staff_username),
-        'role', staff_role
-    );
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.create_staff_user TO anon, authenticated;
-
--- 6. Attendance Records Table (Subject-Wise, Timing & Grooming)
+-- 6. Attendance Records Table
 CREATE TABLE IF NOT EXISTS public.attendance_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     date DATE NOT NULL,
@@ -213,18 +85,16 @@ CREATE TABLE IF NOT EXISTS public.attendance_records (
     roll_number TEXT DEFAULT '',
     course TEXT DEFAULT '',
     subject TEXT NOT NULL,
-    status TEXT NOT NULL,                 -- 'present' or 'absent'
-    timing TEXT DEFAULT 'on_time',        -- 'on_time' or 'late'
-    grooming TEXT DEFAULT 'well_groomed', -- 'well_groomed' or 'not_groomed'
+    status TEXT NOT NULL CHECK (status IN ('present', 'absent')),
+    timing TEXT DEFAULT 'on_time' CHECK (timing IN ('on_time', 'late', 'n/a')),
+    grooming TEXT DEFAULT 'well_groomed' CHECK (grooming IN ('well_groomed', 'not_groomed', 'n/a')),
     marked_by TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT unique_attendance_per_day_subject UNIQUE (date, student_id, subject)
 );
 ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public all access on attendance_records" ON public.attendance_records;
-CREATE POLICY "Allow public all access on attendance_records" ON public.attendance_records FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 7. Leaderboard & Student Performance Scores Table
+-- 7. Leaderboard Table
 CREATE TABLE IF NOT EXISTS public.leaderboard_scores (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id TEXT NOT NULL UNIQUE,
@@ -246,98 +116,93 @@ CREATE TABLE IF NOT EXISTS public.leaderboard_scores (
     last_updated TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.leaderboard_scores ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow public all access on leaderboard_scores" ON public.leaderboard_scores;
-CREATE POLICY "Allow public all access on leaderboard_scores" ON public.leaderboard_scores FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- 8. Helper Functions
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin');
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_attendance_staff()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'attendance_staff');
+$$;
+
+CREATE OR REPLACE FUNCTION public.staff_has_subject_access(subj text)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.staff_subject_assignments WHERE staff_id = auth.uid() AND subject_name = subj);
+$$;
+
+-- 9. Narrow View for Staff (Excludes Father/Guardian Name)
+CREATE OR REPLACE VIEW public.staff_students_view WITH (security_invoker = false) AS
+    SELECT id, name, roll_number, course, created_at FROM public.students;
+
+-- 10. Permissions & Least-Privilege RLS Policies
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM anon;
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT SELECT ON public.staff_students_view TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles, public.staff_subject_assignments, public.students, public.courses, public.subjects, public.attendance_records, public.leaderboard_scores TO authenticated;
+
+-- Policies
+CREATE POLICY "profiles_select" ON public.profiles FOR SELECT TO authenticated USING (public.is_admin() OR id = auth.uid());
+CREATE POLICY "profiles_manage" ON public.profiles FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "staff_subj_select" ON public.staff_subject_assignments FOR SELECT TO authenticated USING (public.is_admin() OR staff_id = auth.uid());
+CREATE POLICY "staff_subj_manage" ON public.staff_subject_assignments FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "students_admin" ON public.students FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "courses_select" ON public.courses FOR SELECT TO authenticated USING (public.is_admin() OR public.is_attendance_staff());
+CREATE POLICY "courses_manage" ON public.courses FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "subjects_select" ON public.subjects FOR SELECT TO authenticated USING (public.is_admin() OR public.is_attendance_staff());
+CREATE POLICY "subjects_manage" ON public.subjects FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "attendance_select" ON public.attendance_records FOR SELECT TO authenticated USING (public.is_admin() OR (public.is_attendance_staff() AND public.staff_has_subject_access(subject)));
+CREATE POLICY "attendance_insert" ON public.attendance_records FOR INSERT TO authenticated WITH CHECK (public.is_admin() OR (public.is_attendance_staff() AND public.staff_has_subject_access(subject)));
+CREATE POLICY "attendance_update" ON public.attendance_records FOR UPDATE TO authenticated USING (public.is_admin() OR (public.is_attendance_staff() AND public.staff_has_subject_access(subject))) WITH CHECK (public.is_admin() OR (public.is_attendance_staff() AND public.staff_has_subject_access(subject)));
+CREATE POLICY "attendance_delete" ON public.attendance_records FOR DELETE TO authenticated USING (public.is_admin());
+
+CREATE POLICY "leaderboard_select" ON public.leaderboard_scores FOR SELECT TO authenticated USING (public.is_admin() OR public.is_attendance_staff());
+CREATE POLICY "leaderboard_manage" ON public.leaderboard_scores FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 `;
 
 /* ==========================================================================
-   AUTH / CURRENT USER HELPERS
+   STUDENTS API (LEAST-PRIVILEGE RLS PROTECTED)
    ========================================================================== */
 
-export function getCurrentUser() {
+/**
+ * Fetch students.
+ * - Admins read from public.students (includes sensitive father_name).
+ * - Staff read from public.staff_students_view (excludes father_name).
+ */
+export async function fetchStudentsFromDB(role = 'admin') {
   try {
-    const raw = localStorage.getItem(LOCAL_CURRENT_USER_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_ADMIN_USER;
-  } catch (err) {
-    return DEFAULT_ADMIN_USER;
-  }
-}
-
-export function saveCurrentUser(user) {
-  try {
-    localStorage.setItem(LOCAL_CURRENT_USER_KEY, JSON.stringify(user));
-  } catch (err) {
-    console.error('Failed to save current user', err);
-  }
-}
-
-/* ==========================================================================
-   STUDENTS HELPERS
-   ========================================================================== */
-
-export function getLocalStudents() {
-  try {
-    const raw = localStorage.getItem(LOCAL_STUDENTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (err) {
-    return [];
-  }
-}
-
-export function saveLocalStudents(students) {
-  try {
-    localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(students));
-  } catch (err) {
-    console.error('Failed to save to localStorage', err);
-  }
-}
-
-export async function fetchStudentsFromDB() {
-  try {
+    const tableOrView = role === 'admin' ? 'students' : 'staff_students_view';
     const { data, error } = await supabase
-      .from('students')
+      .from(tableOrView)
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      const isMissing = error.code === 'PGRST205' || error.message?.toLowerCase().includes('schema cache');
-      const local = getLocalStudents();
-      return {
-        data: local,
-        error: error.message,
-        isTableMissing: isMissing,
-        isOffline: !navigator.onLine,
-        isUsingLocal: true
-      };
+      console.error('Error fetching students:', error.message);
+      return { data: [], error: error.message };
     }
 
-    saveLocalStudents(data || []);
-    return {
-      data: data || [],
-      error: null,
-      isTableMissing: false,
-      isOffline: false,
-      isUsingLocal: false
-    };
+    return { data: data || [], error: null };
   } catch (err) {
-    return {
-      data: getLocalStudents(),
-      error: err.message,
-      isTableMissing: false,
-      isOffline: true,
-      isUsingLocal: true
-    };
+    console.error('fetchStudentsFromDB failed:', err);
+    return { data: [], error: err.message };
   }
 }
 
-export async function addStudentToDB(student) {
+export async function addStudentToDB({ name, father_name = '', roll_number = '', course = '' }) {
   const newStudent = {
-    name: student.name.trim(),
-    father_name: student.father_name ? student.father_name.trim() : null,
-    roll_number: student.roll_number ? student.roll_number.trim() : null,
-    course: student.course ? student.course.trim() : '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+    name: name.trim(),
+    father_name: father_name.trim(),
+    roll_number: roll_number.trim(),
+    course: course.trim()
   };
 
   try {
@@ -347,448 +212,282 @@ export async function addStudentToDB(student) {
       .select();
 
     if (error) {
-      const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
-      const record = { ...newStudent, id: localId, _isLocalOnly: true };
-      const current = getLocalStudents();
-      saveLocalStudents([record, ...current]);
-      return { data: record, error: error.message, isTableMissing: error.code === 'PGRST205', savedLocally: true };
+      return { data: null, error: error.message, success: false };
     }
 
-    const inserted = data[0];
-    const current = getLocalStudents();
-    saveLocalStudents([inserted, ...current]);
-    return { data: inserted, error: null, savedLocally: false };
+    return { data: data[0], error: null, success: true };
   } catch (err) {
-    const localId = 'local-' + Date.now();
-    const record = { ...newStudent, id: localId, _isLocalOnly: true };
-    const current = getLocalStudents();
-    saveLocalStudents([record, ...current]);
-    return { data: record, error: err.message, savedLocally: true };
+    return { data: null, error: err.message, success: false };
   }
 }
 
-export async function updateStudentInDB(id, updates) {
-  const payload = { ...updates, updated_at: new Date().toISOString() };
+export async function updateStudentInDB(id, { name, father_name, roll_number, course }) {
   try {
-    const { data, error } = await supabase.from('students').update(payload).eq('id', id).select();
+    const { data, error } = await supabase
+      .from('students')
+      .update({
+        name: name.trim(),
+        father_name: father_name?.trim() || '',
+        roll_number: roll_number?.trim() || '',
+        course: course?.trim() || '',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select();
+
     if (error) {
-      const current = getLocalStudents();
-      const updatedList = current.map((s) => (s.id === id ? { ...s, ...payload } : s));
-      saveLocalStudents(updatedList);
-      return { success: true, savedLocally: true };
+      return { data: null, error: error.message, success: false };
     }
-    const current = getLocalStudents();
-    const updatedList = current.map((s) => (s.id === id ? (data[0] || { ...s, ...payload }) : s));
-    saveLocalStudents(updatedList);
-    return { success: true, savedLocally: false };
+
+    return { data: data[0], error: null, success: true };
   } catch (err) {
-    const current = getLocalStudents();
-    const updatedList = current.map((s) => (s.id === id ? { ...s, ...payload } : s));
-    saveLocalStudents(updatedList);
-    return { success: true, savedLocally: true };
+    return { data: null, error: err.message, success: false };
   }
 }
 
 export async function deleteStudentFromDB(id) {
   try {
-    await supabase.from('students').delete().eq('id', id);
-    const current = getLocalStudents();
-    saveLocalStudents(current.filter((s) => s.id !== id));
-    return { success: true };
+    const { error } = await supabase.from('students').delete().eq('id', id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, error: null };
   } catch (err) {
-    const current = getLocalStudents();
-    saveLocalStudents(current.filter((s) => s.id !== id));
-    return { success: true };
+    return { success: false, error: err.message };
   }
 }
 
 /* ==========================================================================
-   COURSES HELPERS
+   COURSES API
    ========================================================================== */
-
-export function getLocalCourses() {
-  try {
-    const raw = localStorage.getItem(LOCAL_COURSES_KEY);
-    if (!raw) {
-      localStorage.setItem(LOCAL_COURSES_KEY, JSON.stringify(DEFAULT_COURSES));
-      return DEFAULT_COURSES;
-    }
-    return JSON.parse(raw);
-  } catch (err) {
-    return DEFAULT_COURSES;
-  }
-}
-
-export function saveLocalCourses(courses) {
-  try {
-    localStorage.setItem(LOCAL_COURSES_KEY, JSON.stringify(courses));
-  } catch (err) {
-    console.error('Failed to save courses', err);
-  }
-}
 
 export async function fetchCoursesFromDB() {
   try {
-    const { data, error } = await supabase.from('courses').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('courses')
+      .select('*')
+      .order('created_at', { ascending: false });
+
     if (error) {
-      return { data: getLocalCourses(), error: error.message, isUsingLocal: true };
+      return { data: [], error: error.message };
     }
-    if (data && data.length > 0) {
-      saveLocalCourses(data);
-      return { data, error: null, isUsingLocal: false };
-    }
-    return { data: getLocalCourses(), error: null, isUsingLocal: true };
+
+    return { data: data || [], error: null };
   } catch (err) {
-    return { data: getLocalCourses(), error: err.message, isUsingLocal: true };
+    return { data: [], error: err.message };
   }
 }
 
 export async function addCourseToDB({ name, description = '' }) {
-  const cleanName = name.trim();
-  const cleanDesc = description ? description.trim() : '';
-  const newCourse = { name: cleanName, description: cleanDesc, created_at: new Date().toISOString() };
+  const newCourse = {
+    name: name.trim(),
+    description: description.trim()
+  };
 
   try {
-    const { data, error } = await supabase.from('courses').insert([newCourse]).select();
+    const { data, error } = await supabase
+      .from('courses')
+      .insert([newCourse])
+      .select();
+
     if (error) {
-      const localId = 'course-' + Date.now();
-      const record = { ...newCourse, id: localId, _isLocalOnly: true };
-      const current = getLocalCourses();
-      saveLocalCourses([record, ...current]);
-      return { data: record, error: null, savedLocally: true };
+      return { data: null, error: error.message, success: false };
     }
-    const current = getLocalCourses();
-    saveLocalCourses([data[0], ...current.filter(c => c.name !== cleanName)]);
-    return { data: data[0], error: null, savedLocally: false };
+
+    return { data: data[0], error: null, success: true };
   } catch (err) {
-    const localId = 'course-' + Date.now();
-    const record = { ...newCourse, id: localId, _isLocalOnly: true };
-    const current = getLocalCourses();
-    saveLocalCourses([record, ...current]);
-    return { data: record, error: null, savedLocally: true };
+    return { data: null, error: err.message, success: false };
   }
 }
 
 export async function deleteCourseFromDB(id) {
   try {
-    await supabase.from('courses').delete().eq('id', id);
-    const current = getLocalCourses();
-    saveLocalCourses(current.filter((c) => c.id !== id));
-    return { success: true };
+    const { error } = await supabase.from('courses').delete().eq('id', id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, error: null };
   } catch (err) {
-    const current = getLocalCourses();
-    saveLocalCourses(current.filter((c) => c.id !== id));
-    return { success: true };
+    return { success: false, error: err.message };
   }
 }
 
 /* ==========================================================================
-   SUBJECTS HELPERS
+   SUBJECTS API
    ========================================================================== */
-
-export function getLocalSubjects() {
-  try {
-    const raw = localStorage.getItem(LOCAL_SUBJECTS_KEY);
-    if (!raw) {
-      localStorage.setItem(LOCAL_SUBJECTS_KEY, JSON.stringify(DEFAULT_SUBJECTS));
-      return DEFAULT_SUBJECTS;
-    }
-    return JSON.parse(raw);
-  } catch (err) {
-    return DEFAULT_SUBJECTS;
-  }
-}
-
-export function saveLocalSubjects(subjects) {
-  try {
-    localStorage.setItem(LOCAL_SUBJECTS_KEY, JSON.stringify(subjects));
-  } catch (err) {
-    console.error('Failed to save subjects', err);
-  }
-}
 
 export async function fetchSubjectsFromDB() {
   try {
-    const { data, error } = await supabase.from('subjects').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('subjects')
+      .select('*')
+      .order('created_at', { ascending: false });
+
     if (error) {
-      return { data: getLocalSubjects(), error: error.message, isUsingLocal: true };
+      return { data: [], error: error.message };
     }
-    if (data && data.length > 0) {
-      saveLocalSubjects(data);
-      return { data, error: null, isUsingLocal: false };
-    }
-    return { data: getLocalSubjects(), error: null, isUsingLocal: true };
+
+    return { data: data || [], error: null };
   } catch (err) {
-    return { data: getLocalSubjects(), error: err.message, isUsingLocal: true };
+    return { data: [], error: err.message };
   }
 }
 
 export async function addSubjectToDB({ name, code = '', course_name = '' }) {
-  const newSubject = { name: name.trim(), code: code.trim(), course_name: course_name.trim(), created_at: new Date().toISOString() };
+  const newSubject = {
+    name: name.trim(),
+    code: code.trim(),
+    course_name: course_name.trim()
+  };
+
   try {
-    const { data, error } = await supabase.from('subjects').insert([newSubject]).select();
+    const { data, error } = await supabase
+      .from('subjects')
+      .insert([newSubject])
+      .select();
+
     if (error) {
-      const localId = 'subject-' + Date.now();
-      const record = { ...newSubject, id: localId, _isLocalOnly: true };
-      const current = getLocalSubjects();
-      saveLocalSubjects([record, ...current]);
-      return { data: record, error: null, savedLocally: true };
+      return { data: null, error: error.message, success: false };
     }
-    const current = getLocalSubjects();
-    saveLocalSubjects([data[0], ...current]);
-    return { data: data[0], error: null, savedLocally: false };
+
+    return { data: data[0], error: null, success: true };
   } catch (err) {
-    const localId = 'subject-' + Date.now();
-    const record = { ...newSubject, id: localId, _isLocalOnly: true };
-    const current = getLocalSubjects();
-    saveLocalSubjects([record, ...current]);
-    return { data: record, error: null, savedLocally: true };
+    return { data: null, error: err.message, success: false };
   }
 }
 
 export async function deleteSubjectFromDB(id) {
   try {
-    await supabase.from('subjects').delete().eq('id', id);
-    const current = getLocalSubjects();
-    saveLocalSubjects(current.filter((s) => s.id !== id));
-    return { success: true };
+    const { error } = await supabase.from('subjects').delete().eq('id', id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, error: null };
   } catch (err) {
-    const current = getLocalSubjects();
-    saveLocalSubjects(current.filter((s) => s.id !== id));
-    return { success: true };
+    return { success: false, error: err.message };
   }
 }
 
 /* ==========================================================================
-   STAFF USERS & ROLES HELPERS (SUPABASE AUTH INTEGRATION)
+   STAFF PROFILES & SUBJECT ASSIGNMENTS API
    ========================================================================== */
 
-export function getLocalStaffUsers() {
-  try {
-    const raw = localStorage.getItem(LOCAL_STAFF_KEY);
-    if (!raw) {
-      localStorage.setItem(LOCAL_STAFF_KEY, JSON.stringify(DEFAULT_STAFF_USERS));
-      return DEFAULT_STAFF_USERS;
-    }
-    return JSON.parse(raw);
-  } catch (err) {
-    return DEFAULT_STAFF_USERS;
-  }
-}
-
-export function saveLocalStaffUsers(staff) {
-  try {
-    localStorage.setItem(LOCAL_STAFF_KEY, JSON.stringify(staff));
-  } catch (err) {
-    console.error('Failed to save staff users', err);
-  }
-}
-
+/**
+ * Fetch staff profiles and their assigned subjects
+ */
 export async function fetchStaffUsersFromDB() {
   try {
-    const { data, error } = await supabase.from('staff_users').select('*').order('created_at', { ascending: false });
-    if (error) {
-      return { data: getLocalStaffUsers(), error: error.message, isUsingLocal: true };
+    const { data: profiles, error: pError } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, role, created_at')
+      .eq('role', 'attendance_staff')
+      .order('created_at', { ascending: false });
+
+    if (pError) {
+      return { data: [], error: pError.message };
     }
-    if (data && data.length > 0) {
-      saveLocalStaffUsers(data);
-      return { data, error: null, isUsingLocal: false };
+
+    const { data: assignments, error: aError } = await supabase
+      .from('staff_subject_assignments')
+      .select('staff_id, subject_name');
+
+    if (aError) {
+      console.warn('Could not fetch subject assignments:', aError.message);
     }
-    return { data: getLocalStaffUsers(), error: null, isUsingLocal: true };
-  } catch (err) {
-    return { data: getLocalStaffUsers(), error: err.message, isUsingLocal: true };
-  }
-}
 
-export async function addStaffUserToDB({
-  name,
-  username,
-  password,
-  role = 'attendance_staff',
-  assigned_subjects = [],
-  assigned_subject = ''
-}) {
-  const cleanName = name.trim();
-  const cleanUsername = username.trim().toLowerCase();
-  const cleanPassword = password.trim();
+    const staffList = (profiles || []).map((prof) => {
+      const userAssignments = (assignments || [])
+        .filter((a) => a.staff_id === prof.id)
+        .map((a) => a.subject_name);
 
-  // Normalize assigned_subjects array
-  let subjectsList = Array.isArray(assigned_subjects) ? assigned_subjects : [];
-  if (subjectsList.length === 0 && assigned_subject) {
-    subjectsList = [assigned_subject];
-  }
-
-  // Ensure valid email format for Supabase Auth
-  const cleanEmail = cleanUsername.includes('@')
-    ? cleanUsername
-    : `${cleanUsername}@gmail.com`;
-
-  const newStaff = {
-    name: cleanName,
-    username: cleanUsername,
-    email: cleanEmail,
-    password: cleanPassword,
-    role,
-    assigned_subjects: subjectsList,
-    assigned_subject: subjectsList[0] || '',
-    created_at: new Date().toISOString()
-  };
-
-  let savedInSupabaseAuth = false;
-  let authErrorMsg = null;
-
-  // 1. Try regular Supabase Auth signup first
-  try {
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password: cleanPassword,
-      options: {
-        data: {
-          name: cleanName,
-          username: cleanUsername,
-          role: role,
-          assigned_subjects: subjectsList
-        }
-      }
+      return {
+        id: prof.id,
+        name: prof.full_name,
+        email: prof.email,
+        username: prof.email,
+        role: prof.role,
+        assigned_subjects: userAssignments,
+        created_at: prof.created_at
+      };
     });
 
-    if (!authError && authData?.user) {
-      savedInSupabaseAuth = true;
-      console.log('Supabase Auth signUp succeeded! User ID:', authData.user.id);
-    } else if (authError) {
-      console.warn('Supabase Auth signUp error:', authError);
-      if (authError.message.includes('rate limit')) {
-        authErrorMsg = 'Supabase email rate limit reached. In Supabase Dashboard -> Auth Providers, turn OFF "Confirm email" so emails do not get sent.';
-      } else if (authError.message.includes('invalid')) {
-        authErrorMsg = 'Invalid email domain. Please enter a valid email like staff@gmail.com.';
-      } else {
-        authErrorMsg = authError.message;
-      }
-    }
-  } catch (signUpErr) {
-    authErrorMsg = signUpErr.message;
-    console.warn('Supabase Auth client signup failed:', signUpErr.message);
+    return { data: staffList, error: null };
+  } catch (err) {
+    return { data: [], error: err.message };
   }
-
-  // 2. Try PostgreSQL RPC create_staff_user as backup
-  if (!savedInSupabaseAuth) {
-    try {
-      const { data: rpcData, error: rpcError } = await supabase.rpc('create_staff_user', {
-        staff_name: cleanName,
-        staff_username: cleanUsername,
-        staff_email: cleanEmail,
-        staff_password: cleanPassword,
-        staff_role: role
-      });
-
-      if (!rpcError && rpcData?.success) {
-        savedInSupabaseAuth = true;
-        authErrorMsg = null;
-      }
-    } catch (rpcErr) {
-      console.warn('RPC create_staff_user catch:', rpcErr.message);
-    }
-  }
-
-  // 3. Insert into public.staff_users table
-  try {
-    const { data, error } = await supabase.from('staff_users').insert([newStaff]).select();
-    if (!error && data && data.length > 0) {
-      const record = { ...data[0], savedInSupabaseAuth };
-      const current = getLocalStaffUsers();
-      saveLocalStaffUsers([record, ...current.filter(s => s.username !== cleanUsername)]);
-      return {
-        data: record,
-        error: authErrorMsg ? `Note for Auth: ${authErrorMsg}` : null,
-        savedInSupabaseAuth
-      };
-    }
-  } catch (tblErr) {
-    console.warn('Insert to public.staff_users failed:', tblErr.message);
-  }
-
-  // 4. Local storage fallback
-  const localId = 'staff-' + Date.now();
-  const record = { ...newStaff, id: localId, _isLocalOnly: true, savedInSupabaseAuth };
-  const current = getLocalStaffUsers();
-  if (current.some(s => s.username === cleanUsername)) {
-    throw new Error('Staff ID/Username already exists!');
-  }
-  saveLocalStaffUsers([record, ...current]);
-  return {
-    data: record,
-    error: authErrorMsg ? `Note for Supabase Auth: ${authErrorMsg}` : null,
-    savedInSupabaseAuth
-  };
 }
 
+/**
+ * Assign subjects to a staff profile
+ */
+export async function assignStaffSubjectsInDB(staffId, subjectNames = []) {
+  try {
+    // Delete existing assignments
+    await supabase
+      .from('staff_subject_assignments')
+      .delete()
+      .eq('staff_id', staffId);
+
+    if (subjectNames.length === 0) return { success: true };
+
+    const rows = subjectNames.map((s) => ({
+      staff_id: staffId,
+      subject_name: s
+    }));
+
+    const { error } = await supabase
+      .from('staff_subject_assignments')
+      .insert(rows);
+
+    if (error) throw error;
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete a staff profile
+ */
 export async function deleteStaffUserFromDB(id) {
   try {
-    await supabase.from('staff_users').delete().eq('id', id);
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, error: null };
   } catch (err) {
-    console.warn('Delete from staff_users error:', err.message);
+    return { success: false, error: err.message };
   }
-  const current = getLocalStaffUsers();
-  saveLocalStaffUsers(current.filter((s) => s.id !== id));
-  return { success: true };
 }
 
 /* ==========================================================================
-   ATTENDANCE HELPERS
+   ATTENDANCE RECORDS API
    ========================================================================== */
 
-export function getLocalAttendance(date, subject = '') {
-  try {
-    const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    let all = raw ? JSON.parse(raw) : [];
-    if (date) {
-      all = all.filter((r) => r.date === date);
-    }
-    if (subject && subject !== 'ALL') {
-      all = all.filter((r) => r.subject === subject);
-    }
-    return all;
-  } catch (err) {
-    return [];
-  }
-}
-
-export function saveLocalAttendance(newRecords) {
-  try {
-    const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    let all = raw ? JSON.parse(raw) : [];
-    const newKeys = new Set(newRecords.map((r) => `${r.date}_${r.student_id}_${r.subject || ''}`));
-    all = all.filter((r) => !newKeys.has(`${r.date}_${r.student_id}_${r.subject || ''}`));
-    all.push(...newRecords);
-    localStorage.setItem(LOCAL_ATTENDANCE_KEY, JSON.stringify(all));
-  } catch (err) {
-    console.error('Failed to save attendance locally', err);
-  }
-}
-
-export async function fetchAttendanceFromDB(date, course = '', subject = '') {
+export async function fetchAttendanceForDateFromDB(date, course, subject) {
   try {
     let query = supabase.from('attendance_records').select('*').eq('date', date);
+
     if (course && course !== 'ALL') {
       query = query.eq('course', course);
     }
     if (subject && subject !== 'ALL') {
       query = query.eq('subject', subject);
     }
+
     const { data, error } = await query;
     if (error) {
-      return { data: getLocalAttendance(date, subject), error: error.message, isUsingLocal: true };
+      return { data: [], error: error.message };
     }
-    return { data: data || [], error: null, isUsingLocal: false };
+
+    return { data: data || [], error: null };
   } catch (err) {
-    return { data: getLocalAttendance(date, subject), error: err.message, isUsingLocal: true };
+    return { data: [], error: err.message };
   }
 }
 
-/**
- * Fetch attendance across a date range for Admin Reports & Export
- */
-export async function fetchAttendanceRangeFromDB(startDate, endDate, course = 'ALL', subject = 'ALL') {
+export async function fetchAttendanceRangeFromDB(startDate, endDate, course, subject) {
   try {
     let query = supabase
       .from('attendance_records')
@@ -806,21 +505,12 @@ export async function fetchAttendanceRangeFromDB(startDate, endDate, course = 'A
 
     const { data, error } = await query;
     if (error) {
-      const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-      let all = raw ? JSON.parse(raw) : [];
-      let filtered = all.filter((r) => r.date >= startDate && r.date <= endDate);
-      if (course && course !== 'ALL') filtered = filtered.filter((r) => r.course === course);
-      if (subject && subject !== 'ALL') filtered = filtered.filter((r) => r.subject === subject);
-      return { data: filtered, error: error.message, isUsingLocal: true };
+      return { data: [], error: error.message };
     }
-    return { data: data || [], error: null, isUsingLocal: false };
+
+    return { data: data || [], error: null };
   } catch (err) {
-    const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    let all = raw ? JSON.parse(raw) : [];
-    let filtered = all.filter((r) => r.date >= startDate && r.date <= endDate);
-    if (course && course !== 'ALL') filtered = filtered.filter((r) => r.course === course);
-    if (subject && subject !== 'ALL') filtered = filtered.filter((r) => r.subject === subject);
-    return { data: filtered, error: err.message, isUsingLocal: true };
+    return { data: [], error: err.message };
   }
 }
 
@@ -834,15 +524,12 @@ export async function saveAttendanceToDB(records) {
       .select();
 
     if (error) {
-      saveLocalAttendance(records);
-      return { success: true, savedLocally: true };
+      return { success: false, error: error.message };
     }
 
-    saveLocalAttendance(records);
-    return { success: true, savedLocally: false };
+    return { success: true, data, error: null };
   } catch (err) {
-    saveLocalAttendance(records);
-    return { success: true, savedLocally: true };
+    return { success: false, error: err.message };
   }
 }
 
@@ -850,11 +537,6 @@ export async function saveAttendanceToDB(records) {
    LEADERBOARD & PERFORMANCE SCORES HELPERS
    ========================================================================== */
 
-export const LOCAL_LEADERBOARD_KEY = 'gse_leaderboard_scores_v1';
-
-/**
- * Fetch all attendance records across all dates to compute live scores
- */
 export async function fetchAllAttendanceRecords() {
   try {
     const { data, error } = await supabase
@@ -862,27 +544,20 @@ export async function fetchAllAttendanceRecords() {
       .select('*')
       .order('date', { ascending: false });
 
-    if (!error && data) {
-      return data;
+    if (error) {
+      console.error('Failed to fetch attendance records:', error.message);
+      return [];
     }
-    const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    return data || [];
   } catch (err) {
-    const raw = localStorage.getItem(LOCAL_ATTENDANCE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    console.error('fetchAllAttendanceRecords error:', err);
+    return [];
   }
 }
 
-/**
- * Calculate scores based on:
- * - Attendance (Present = +10 pts)
- * - Timing (On Time = +5 pts, Late = +2 pts)
- * - Grooming (Well Groomed = +5 pts, Not Groomed = 0 pts)
- */
 export function computeLeaderboardScores(students = [], attendanceRecords = []) {
   if (!students || students.length === 0) return [];
 
-  // Group attendance records by student_id
   const studentRecordsMap = {};
   attendanceRecords.forEach((r) => {
     if (!studentRecordsMap[r.student_id]) {
@@ -903,10 +578,10 @@ export function computeLeaderboardScores(students = [], attendanceRecords = []) 
     let not_groomed_count = 0;
 
     records.forEach((rec) => {
-      const isPresent = rec.status === 'present' || rec.status === 'late';
+      const isPresent = rec.status === 'present';
       if (isPresent) {
         present_count++;
-        if (rec.timing === 'late' || rec.status === 'late') {
+        if (rec.timing === 'late') {
           late_count++;
         } else {
           on_time_count++;
@@ -922,8 +597,6 @@ export function computeLeaderboardScores(students = [], attendanceRecords = []) 
       }
     });
 
-    // Score Formula:
-    // Present = 10 pts, On Time = 5 pts, Late = 2 pts, Well Groomed = 5 pts
     const total_score =
       present_count * 10 +
       on_time_count * 5 +
@@ -960,7 +633,6 @@ export function computeLeaderboardScores(students = [], attendanceRecords = []) 
     };
   });
 
-  // Sort by total_score desc, then attendance_percentage desc
   scores.sort((a, b) => {
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
@@ -968,7 +640,6 @@ export function computeLeaderboardScores(students = [], attendanceRecords = []) 
     return b.attendance_percentage - a.attendance_percentage;
   });
 
-  // Assign ranks
   scores.forEach((item, index) => {
     item.rank = index + 1;
   });
@@ -976,58 +647,43 @@ export function computeLeaderboardScores(students = [], attendanceRecords = []) 
   return scores;
 }
 
-/**
- * Sync computed scores into Supabase leaderboard_scores table and localStorage
- */
 export async function syncLeaderboardToDB(scores) {
   if (!scores || scores.length === 0) return { success: true };
 
   try {
-    localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(scores));
     const { data, error } = await supabase
       .from('leaderboard_scores')
       .upsert(scores, { onConflict: 'student_id' })
       .select();
 
     if (error) {
-      console.warn('Leaderboard DB sync warning:', error.message);
-      return { success: true, savedLocally: true };
+      return { success: false, error: error.message };
     }
-    return { success: true, savedLocally: false };
+    return { success: true, data, error: null };
   } catch (err) {
-    console.warn('Leaderboard DB sync error:', err.message);
-    return { success: true, savedLocally: true };
+    return { success: false, error: err.message };
   }
 }
 
-/**
- * Fetch leaderboard from DB or compute from all records
- */
 export async function fetchLeaderboardFromDB(students = []) {
   try {
-    // 1. Try fetching from leaderboard_scores table
     const { data, error } = await supabase
       .from('leaderboard_scores')
       .select('*')
       .order('rank', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(data));
-      return { data, isUsingLocal: false };
+      return { data, error: null };
     }
 
-    // 2. If table empty or error, compute fresh from attendance_records
+    // Compute fresh from attendance records
     const allRecords = await fetchAllAttendanceRecords();
     const computed = computeLeaderboardScores(students, allRecords);
-    await syncLeaderboardToDB(computed);
-    return { data: computed, isUsingLocal: true };
+    if (computed.length > 0) {
+      await syncLeaderboardToDB(computed);
+    }
+    return { data: computed, error: null };
   } catch (err) {
-    const raw = localStorage.getItem(LOCAL_LEADERBOARD_KEY);
-    const cached = raw ? JSON.parse(raw) : [];
-    if (cached.length > 0) return { data: cached, isUsingLocal: true };
-
-    const allRecords = await fetchAllAttendanceRecords();
-    const computed = computeLeaderboardScores(students, allRecords);
-    return { data: computed, isUsingLocal: true };
+    return { data: [], error: err.message };
   }
 }

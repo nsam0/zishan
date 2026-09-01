@@ -86,6 +86,11 @@ export default function CoursesAndSubjects({
         description: courseDesc.trim()
       });
 
+      if (result.error || !result.success) {
+        setCourseMsg({ type: 'error', text: result.error || 'Failed to add course.' });
+        return;
+      }
+
       setCourseMsg({
         type: 'success',
         text: `Course "${courseName}" added successfully!`
@@ -112,7 +117,10 @@ export default function CoursesAndSubjects({
     if (!deletingCourse) return;
     setIsDeletingCourse(true);
     try {
-      await deleteCourseFromDB(deletingCourse.id);
+      const res = await deleteCourseFromDB(deletingCourse.id);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete course.');
+      }
       if (onCourseDeleted) {
         onCourseDeleted(deletingCourse.id);
       }
@@ -142,6 +150,11 @@ export default function CoursesAndSubjects({
         course_name: subjectCourse.trim()
       });
 
+      if (result.error || !result.success) {
+        setSubjectMsg({ type: 'error', text: result.error || 'Failed to add subject.' });
+        return;
+      }
+
       setSubjectMsg({
         type: 'success',
         text: `Subject "${subjectName}" added successfully!`
@@ -169,7 +182,10 @@ export default function CoursesAndSubjects({
     if (!deletingSubject) return;
     setIsDeletingSubject(true);
     try {
-      await deleteSubjectFromDB(deletingSubject.id);
+      const res = await deleteSubjectFromDB(deletingSubject.id);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete subject.');
+      }
       if (onSubjectDeleted) {
         onSubjectDeleted(deletingSubject.id);
       }

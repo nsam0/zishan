@@ -80,7 +80,10 @@ export default function StudentDirectory({
 
     setIsUpdating(true);
     try {
-      await updateStudentInDB(editingStudent.id, editFormData);
+      const res = await updateStudentInDB(editingStudent.id, editFormData);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to update student in database.');
+      }
       if (onStudentUpdated) {
         onStudentUpdated({ ...editingStudent, ...editFormData });
       }
@@ -97,7 +100,10 @@ export default function StudentDirectory({
     if (!deletingStudent) return;
     setIsDeleting(true);
     try {
-      await deleteStudentFromDB(deletingStudent.id);
+      const res = await deleteStudentFromDB(deletingStudent.id);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to delete student from database.');
+      }
       if (onStudentDeleted) {
         onStudentDeleted(deletingStudent.id);
       }

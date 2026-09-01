@@ -9,22 +9,19 @@ import StaffRolesManagement from './components/StaffRolesManagement';
 import LeaderboardModule from './components/LeaderboardModule';
 import LoginModal from './components/LoginModal';
 import SqlSetupModal from './components/SqlSetupModal';
+import { useAuth } from './context/AuthContext';
 import {
   fetchStudentsFromDB,
   fetchCoursesFromDB,
   fetchSubjectsFromDB,
-  fetchStaffUsersFromDB,
-  getCurrentUser,
-  saveCurrentUser,
-  DEFAULT_ADMIN_USER
+  fetchStaffUsersFromDB
 } from './lib/supabase';
-import { Trophy, Lock } from 'lucide-react';
+import { Lock, Loader2 } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
-  const [activeTab, setActiveTab] = useState(() =>
-    currentUser?.role === 'admin' ? 'students' : 'attendance'
-  );
+  const { session, user, profile, isAdmin, isStaff, assignedSubjects, isLoading: authLoading } = useAuth();
+
+  const [activeTab, setActiveTab] = useState('attendance');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [students, setStudents] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -32,32 +29,43 @@ export default function App() {
   const [staffUsers, setStaffUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isSwitchUserModalOpen, setIsSwitchUserModalOpen] = useState(false);
   const [dbStatus, setDbStatus] = useState({
-    isConnected: false,
+    isConnected: true,
     isTableMissing: false,
     isOffline: false,
-    isUsingLocal: true,
+    isUsingLocal: false
   });
 
-  const isAdmin = currentUser?.role === 'admin';
-
-  // If staff logs in, ensure they stay on attendance or allowed tabs
+  // Keep staff locked onto attendance or leaderboard
   useEffect(() => {
-    if (!isAdmin && activeTab !== 'attendance' && activeTab !== 'leaderboard') {
-      setActiveTab('attendance');
+    if (session) {
+      if (isAdmin) {
+        // Admin default to students if first time
+        setActiveTab((prev) => (prev === 'attendance' ? 'students' : prev));
+      } else {
+        // Staff locked to attendance or leaderboard
+        if (activeTab !== 'attendance' && activeTab !== 'leaderboard') {
+          setActiveTab('attendance');
+        }
+      }
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin, session]);
 
-  // Load all initial data
+  // Load verified data from Supabase
   const loadData = useCallback(async () => {
+    if (!session) return;
+
     setIsLoading(true);
     try {
+      const userRole = isAdmin ? 'admin' : 'attendance_staff';
+
+      // Staff queries staff_students_view, Admin queries students
       const [studentsRes, coursesRes, subjectsRes, staffRes] = await Promise.all([
-        fetchStudentsFromDB(),
+        fetchStudentsFromDB(userRole),
         fetchCoursesFromDB(),
         fetchSubjectsFromDB(),
-        fetchStaffUsersFromDB()
+        isAdmin ? fetchStaffUsersFromDB() : Promise.resolve({ data: [], error: null })
       ]);
 
       setStudents(studentsRes.data || []);
@@ -66,52 +74,23 @@ export default function App() {
       setStaffUsers(staffRes.data || []);
 
       setDbStatus({
-        isConnected: !studentsRes.isTableMissing && !studentsRes.isOffline && !studentsRes.error,
-        isTableMissing: studentsRes.isTableMissing,
-        isOffline: studentsRes.isOffline,
-        isUsingLocal: studentsRes.isUsingLocal,
+        isConnected: !studentsRes.error,
+        isTableMissing: false,
+        isOffline: !navigator.onLine,
+        isUsingLocal: false
       });
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [session, isAdmin]);
 
   useEffect(() => {
-    loadData();
-
-    const handleOnline = () => loadData();
-    const handleOffline = () => {
-      setDbStatus((prev) => ({ ...prev, isOffline: true }));
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [loadData]);
-
-  // Login handler
-  const handleLoginSuccess = (user) => {
-    setCurrentUser(user);
-    saveCurrentUser(user);
-    if (user.role === 'admin') {
-      setActiveTab('students');
-    } else {
-      setActiveTab('attendance');
+    if (session) {
+      loadData();
     }
-  };
-
-  // Logout handler
-  const handleLogout = () => {
-    if (confirm('Do you want to sign out or switch account?')) {
-      setIsLoginModalOpen(true);
-    }
-  };
+  }, [session, loadData]);
 
   // Student Actions
   const handleStudentAdded = (newStudent) => {
@@ -155,13 +134,41 @@ export default function App() {
     setStaffUsers((prev) => prev.filter((s) => s.id !== deletedId));
   };
 
+  // 1. Loading screen while checking auth session
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <Loader2 className="w-9 h-9 text-blue-600 animate-spin mb-3" />
+        <p className="text-sm font-semibold text-slate-700">Verifying secure session...</p>
+        <p className="text-xs text-slate-400 mt-1">Connecting to Global Skill Education Portal</p>
+      </div>
+    );
+  }
+
+  // 2. Unauthenticated Gate: User must sign in
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-slate-900/10 flex items-center justify-center p-4">
+        <LoginModal isOpen={true} isGateMode={true} />
+      </div>
+    );
+  }
+
+  const currentUser = {
+    id: user?.id,
+    email: user?.email,
+    name: profile?.full_name || user?.email,
+    username: user?.email,
+    role: profile?.role || 'attendance_staff',
+    assigned_subjects: assignedSubjects,
+    assigned_subject: assignedSubjects[0] || ''
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
       {/* Top Navigation Bar */}
       <Navbar
-        currentUser={currentUser}
-        onOpenLoginModal={() => setIsLoginModalOpen(true)}
-        onLogout={handleLogout}
+        onOpenLoginModal={() => setIsSwitchUserModalOpen(true)}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         isMobileMenuOpen={isMobileMenuOpen}
       />
@@ -180,10 +187,10 @@ export default function App() {
           currentUser={currentUser}
         />
 
-        {/* Dynamic Content Area */}
+        {/* Content Area */}
         <main className="flex-1 min-w-0">
           
-          {/* 1. ATTENDANCE TAB (Accessible to BOTH Admin and Staff) */}
+          {/* 1. ATTENDANCE TAB */}
           {activeTab === 'attendance' && (
             <AttendanceModule
               students={students}
@@ -270,27 +277,28 @@ export default function App() {
 
       </div>
 
-      {/* Supabase SQL Setup Modal */}
-      <SqlSetupModal
-        isOpen={isSqlModalOpen}
-        onClose={() => setIsSqlModalOpen(false)}
-        onVerified={() => {
-          loadData();
-        }}
-      />
+      {/* Supabase SQL Setup Modal (Admin Only) */}
+      {isAdmin && (
+        <SqlSetupModal
+          isOpen={isSqlModalOpen}
+          onClose={() => setIsSqlModalOpen(false)}
+          onVerified={() => {
+            loadData();
+          }}
+        />
+      )}
 
-      {/* Login & Role Switcher Modal */}
+      {/* Switch User Modal */}
       <LoginModal
-        isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
-        staffUsers={staffUsers}
-        onLoginSuccess={handleLoginSuccess}
+        isOpen={isSwitchUserModalOpen}
+        onClose={() => setIsSwitchUserModalOpen(false)}
+        isGateMode={false}
       />
     </div>
   );
 }
 
-// Fallback component for unauthorized routes
+// Fallback card for unauthorized routes
 function AccessRestrictedCard({ onGoToAttendance }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center max-w-md mx-auto my-12 shadow-xs">
@@ -299,7 +307,7 @@ function AccessRestrictedCard({ onGoToAttendance }) {
       </div>
       <h3 className="text-lg font-bold text-slate-900">Access Restricted</h3>
       <p className="text-xs sm:text-sm text-slate-500 mt-2 mb-5">
-        Your account role only permits marking student attendance. Please log in with an Admin account to manage students or courses.
+        Your account role only permits marking student attendance. Please sign in with an Admin account to manage students, courses, or staff roles.
       </p>
       <button
         type="button"

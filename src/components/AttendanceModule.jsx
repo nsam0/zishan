@@ -21,10 +21,11 @@ import {
   X
 } from 'lucide-react';
 import {
-  fetchAttendanceFromDB,
+  fetchAttendanceForDateFromDB,
   fetchAttendanceRangeFromDB,
   saveAttendanceToDB
 } from '../lib/supabase';
+import { sanitizeCsvCell } from '../lib/security';
 
 export default function AttendanceModule({
   students,
@@ -297,7 +298,7 @@ export default function AttendanceModule({
           text: `Attendance saved for ${recordsToSave.length} students on ${selectedDate} for [${selectedSubject}]!`
         });
       } else {
-        setMessage({ type: 'error', text: 'Failed to save attendance.' });
+        setMessage({ type: 'error', text: res.error || 'Failed to save attendance to database.' });
       }
     } catch (err) {
       setMessage({ type: 'error', text: err.message || 'Error saving attendance.' });
@@ -351,16 +352,16 @@ export default function AttendanceModule({
       ];
 
       const rows = records.map((r) => [
-        `"${r.date || ''}"`,
-        `"${(r.student_name || '').replace(/"/g, '""')}"`,
-        `"${r.roll_number || ''}"`,
-        `"${r.course || ''}"`,
-        `"${r.subject || ''}"`,
-        `"${(r.status || '').toUpperCase()}"`,
-        `"${r.timing === 'late' ? 'Late' : r.timing === 'on_time' ? 'On Time' : 'N/A'}"`,
-        `"${r.grooming === 'not_groomed' ? 'Not Well Groomed' : r.grooming === 'well_groomed' ? 'Well Groomed' : 'N/A'}"`,
-        `"${(r.marked_by || '').replace(/"/g, '""')}"`,
-        `"${r.created_at || ''}"`
+        sanitizeCsvCell(r.date || ''),
+        sanitizeCsvCell(r.student_name || ''),
+        sanitizeCsvCell(r.roll_number || ''),
+        sanitizeCsvCell(r.course || ''),
+        sanitizeCsvCell(r.subject || ''),
+        sanitizeCsvCell((r.status || '').toUpperCase()),
+        sanitizeCsvCell(r.timing === 'late' ? 'Late' : r.timing === 'on_time' ? 'On Time' : 'N/A'),
+        sanitizeCsvCell(r.grooming === 'not_groomed' ? 'Not Well Groomed' : r.grooming === 'well_groomed' ? 'Well Groomed' : 'N/A'),
+        sanitizeCsvCell(r.marked_by || ''),
+        sanitizeCsvCell(r.created_at || '')
       ]);
 
       const csvString =

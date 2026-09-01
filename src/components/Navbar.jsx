@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Download, LogOut, User, Menu, X, Shield, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({
-  currentUser,
   onOpenLoginModal,
-  onLogout,
   onToggleMobileMenu,
   isMobileMenuOpen
 }) {
+  const { user, profile, isAdmin, signOut } = useAuth();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
@@ -45,7 +45,7 @@ export default function Navbar({
     }
   };
 
-  const isAdmin = currentUser?.role === 'admin';
+  const displayName = profile?.full_name || user?.email || 'User';
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200/80 shadow-xs">
@@ -108,7 +108,7 @@ export default function Navbar({
               type="button"
               onClick={onOpenLoginModal}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs sm:text-sm transition-colors cursor-pointer"
-              title="Click to Switch User / Role"
+              title="Click to Switch Account"
             >
               <div
                 className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
@@ -119,7 +119,7 @@ export default function Navbar({
               </div>
               <div className="text-left hidden sm:block">
                 <div className="font-semibold text-slate-800 text-xs leading-none">
-                  {currentUser?.name || currentUser?.username}
+                  {displayName}
                 </div>
                 <div className="text-[10px] text-slate-400 font-medium">
                   {isAdmin ? 'Full Admin Access' : 'Attendance Only'}
@@ -130,7 +130,11 @@ export default function Navbar({
             {/* Log Out */}
             <button
               type="button"
-              onClick={onLogout}
+              onClick={() => {
+                if (confirm('Are you sure you want to sign out?')) {
+                  signOut();
+                }
+              }}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Log out"
             >

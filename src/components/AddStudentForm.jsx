@@ -30,17 +30,15 @@ export default function AddStudentForm({ courses = [], onStudentAdded, onNavigat
     try {
       const result = await addStudentToDB(formData);
       
-      if (result.error && !result.savedLocally) {
+      if (result.error || !result.success) {
         setMessage({
           type: 'error',
-          text: `Error adding student: ${result.error}`
+          text: `Error adding student: ${result.error || 'Database operation failed.'}`
         });
       } else {
         setMessage({
           type: 'success',
-          text: result.savedLocally
-            ? `Student "${formData.name}" added locally! (Supabase table setup pending)`
-            : `Student "${formData.name}" added to Supabase directory successfully!`
+          text: `Student "${formData.name}" added to Supabase directory successfully!`
         });
 
         // Reset form

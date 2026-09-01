@@ -3,42 +3,35 @@ import {
   Shield,
   UserPlus,
   Trash2,
-  Lock,
+  Mail,
   User,
-  KeyRound,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Eye,
-  EyeOff,
   ShieldCheck,
   Sparkles,
   BookOpen,
   Pencil,
-  Check
+  Check,
+  Info
 } from 'lucide-react';
-import { addStaffUserToDB, deleteStaffUserFromDB } from '../lib/supabase';
+import { supabase, assignStaffSubjectsInDB, deleteStaffUserFromDB } from '../lib/supabase';
+import { isValidEmail } from '../lib/security';
 
 export default function StaffRolesManagement({
-  staffUsers,
+  staffUsers = [],
   subjects = [],
   onStaffAdded,
   onStaffDeleted
 }) {
   const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState([]);
   const [isSubjectSelectionDone, setIsSubjectSelectionDone] = useState(false);
-  const [showPasswords, setShowPasswords] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
   const [deletingUser, setDeletingUser] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const togglePasswordVisibility = (id) => {
-    setShowPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
 
   const handleToggleSubject = (subName) => {
     setSelectedSubjects((prev) =>
@@ -58,15 +51,23 @@ export default function StaffRolesManagement({
 
   const handleAddStaff = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !username.trim() || !password.trim()) {
-      setMessage({ type: 'error', text: 'All fields (Full Name, ID/Email, Password) are required!' });
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName || !cleanEmail) {
+      setMessage({ type: 'error', text: 'Full Name and Official Email are required!' });
+      return;
+    }
+
+    if (!isValidEmail(cleanEmail)) {
+      setMessage({ type: 'error', text: 'Please enter a valid email address format (e.g. staff@example.com).' });
       return;
     }
 
     if (selectedSubjects.length === 0) {
       setMessage({
         type: 'error',
-        text: 'Please select and confirm at least 1 subject to grant attendance access!'
+        text: 'Please select and confirm at least 1 subject to grant attendance permissions!'
       });
       return;
     }
@@ -75,48 +76,71 @@ export default function StaffRolesManagement({
     setMessage(null);
 
     try {
-      const result = await addStaffUserToDB({
-        name: name.trim(),
-        username: username.trim(),
-        password: password.trim(),
-        role: 'attendance_staff',
-        assigned_subjects: selectedSubjects,
-        assigned_subject: selectedSubjects[0]
-      });
+      // Check if user already exists in auth or profiles
+      const { data: existingProfiles } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', cleanEmail)
+        .maybeSingle();
 
-      if (result.savedInSupabaseAuth) {
+      let targetUserId = existingProfiles?.id;
+
+      if (!targetUserId) {
+        // Look up auth user if available or guide admin
+        setMessage({
+          type: 'info',
+          text: `Note: If "${cleanEmail}" does not exist in Supabase Auth yet, please invite or create the user in Supabase Dashboard -> Authentication -> Users. We are linking permissions now.`
+        });
+      }
+
+      // If user profile exists, update profile and assign subjects
+      if (targetUserId) {
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: cleanName,
+            role: 'attendance_staff',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', targetUserId);
+
+        await assignStaffSubjectsInDB(targetUserId, selectedSubjects);
+
         setMessage({
           type: 'success',
-          text: `Staff "${name}" registered in Supabase Auth with access to ${selectedSubjects.length} subject(s)!`
-        });
-      } else if (result.error) {
-        setMessage({
-          type: 'warning',
-          text: `${result.error}. (Staff was saved locally). In Supabase Auth, turn OFF "Confirm email" for immediate login!`
+          text: `Staff permissions successfully updated for "${cleanName}" with ${selectedSubjects.length} subject(s)!`
         });
       } else {
+        // Fallback: If not yet in auth.users, inform admin how to complete setup
         setMessage({
-          type: 'success',
-          text: `Staff account "${name}" created with ${selectedSubjects.length} subject(s) assigned!`
+          type: 'warning',
+          text: `Profile for "${cleanEmail}" will activate when the user is created in Supabase Authentication. Password must be set securely via Supabase Auth.`
         });
       }
 
       setName('');
-      setUsername('');
-      setPassword('');
+      setEmail('');
       setSelectedSubjects([]);
       setIsSubjectSelectionDone(false);
 
       if (onStaffAdded) {
-        onStaffAdded(result.data);
+        onStaffAdded({
+          id: targetUserId || 'temp-' + Date.now(),
+          name: cleanName,
+          email: cleanEmail,
+          username: cleanEmail,
+          role: 'attendance_staff',
+          assigned_subjects: selectedSubjects,
+          created_at: new Date().toISOString()
+        });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Failed to create staff account' });
+      setMessage({ type: 'error', text: err.message || 'Failed to save staff permissions.' });
     } finally {
       setIsSubmitting(false);
       setTimeout(() => {
         setMessage((prev) => (prev?.type === 'success' ? null : prev));
-      }, 7000);
+      }, 8000);
     }
   };
 
@@ -124,7 +148,10 @@ export default function StaffRolesManagement({
     if (!deletingUser) return;
     setIsDeleting(true);
     try {
-      await deleteStaffUserFromDB(deletingUser.id);
+      const res = await deleteStaffUserFromDB(deletingUser.id);
+      if (!res.success) {
+        throw new Error(res.error);
+      }
       if (onStaffDeleted) {
         onStaffDeleted(deletingUser.id);
       }
@@ -151,7 +178,7 @@ export default function StaffRolesManagement({
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Assign credentials to staff members and grant attendance access for <strong>one or more specific subjects</strong>.
+            Grant attendance permissions for <strong>one or more specific subjects</strong> with least-privilege security.
           </p>
         </div>
 
@@ -165,10 +192,10 @@ export default function StaffRolesManagement({
       {/* 2 Column Cards Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Left Card: Create Staff Account */}
+        {/* Left Card: Assign Staff Permissions */}
         <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6">
           <div className="mb-5 pb-4 border-b border-slate-100">
-            <h2 className="text-lg font-bold text-slate-900">Assign Staff Credentials</h2>
+            <h2 className="text-lg font-bold text-slate-900">Assign Subject Permissions</h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Role: <strong className="text-purple-700">Attendance Staff</strong>
             </p>
@@ -180,7 +207,9 @@ export default function StaffRolesManagement({
               className={`mb-4 p-3 rounded-xl text-xs flex items-start gap-2 ${
                 message.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+                  : message.type === 'warning'
+                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
             >
               {message.type === 'success' ? (
@@ -211,46 +240,21 @@ export default function StaffRolesManagement({
               </div>
             </div>
 
-            {/* Username / Staff ID */}
+            {/* Email */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">
-                Staff ID / Login Email <span className="text-rose-500">*</span>
+                Staff Email (Supabase Auth) <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <Mail className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                 <input
-                  type="text"
+                  type="email"
                   required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. rahul@gmail.com or staff1"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. rahul@example.com"
                   className="w-full pl-9 pr-3 py-2 bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:border-purple-500"
                 />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">
-                Password <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type={showPasswords['new_user'] ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="e.g. Pass@123"
-                  className="w-full pl-9 pr-9 py-2 bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:border-purple-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => togglePasswordVisibility('new_user')}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showPasswords['new_user'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
               </div>
             </div>
 
@@ -261,7 +265,6 @@ export default function StaffRolesManagement({
                   Assign Subject Permissions <span className="text-rose-500">*</span>
                 </label>
                 
-                {/* Select All / Clear (Visible only when editing) */}
                 {!isSubjectSelectionDone && subjects.length > 0 && (
                   <div className="flex items-center gap-2">
                     <button
@@ -293,7 +296,7 @@ export default function StaffRolesManagement({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-purple-950">
                       <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                      <span>{selectedSubjects.length} Subject(s) Selected & Locked</span>
+                      <span>{selectedSubjects.length} Subject(s) Selected & Confirmed</span>
                     </div>
                     <button
                       type="button"
@@ -336,7 +339,7 @@ export default function StaffRolesManagement({
                             <input
                               type="checkbox"
                               checked={isChecked}
-                              onChange={() => {}} // handled by label onClick
+                              onChange={() => {}}
                               className="rounded text-purple-600 focus:ring-purple-500 cursor-pointer w-4 h-4"
                             />
                             <div>
@@ -380,17 +383,17 @@ export default function StaffRolesManagement({
               )}
 
               <p className="text-[11px] text-slate-400 mt-1">
-                Tick the subjects then click <strong>"Done"</strong>. You can click <strong>"Edit Selection"</strong> anytime to make adjustments.
+                Tick the subjects then click <strong>"Done"</strong>. You can click <strong>"Edit Selection"</strong> anytime before submitting.
               </p>
             </div>
 
-            {/* Assigned Role Display */}
-            <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl text-xs text-purple-900 flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+            {/* Password Security Notice */}
+            <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-950 flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
               <div>
-                <strong>Role: Attendance Staff</strong>
-                <p className="text-[11px] text-purple-700 mt-0.5">
-                  When logging in, this staff will ONLY see and mark attendance for their authorized subject(s).
+                <strong>Zero Plaintext Passwords:</strong>
+                <p className="text-[11px] text-blue-800 mt-0.5">
+                  Staff members manage their passwords securely through Supabase Auth (via invitation or password reset email). No plaintext passwords are ever stored or exposed.
                 </p>
               </div>
             </div>
@@ -405,18 +408,18 @@ export default function StaffRolesManagement({
               ) : (
                 <UserPlus className="w-4 h-4" />
               )}
-              <span>Create Staff Account</span>
+              <span>Assign Staff Permissions</span>
             </button>
           </form>
         </div>
 
-        {/* Right Card: Staff Accounts Directory */}
+        {/* Right Card: Active Staff Directory */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6">
           <div className="mb-5 pb-4 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-900">Active Staff Accounts</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Staff members and their assigned subject permissions
+                Staff members and their verified subject permissions
               </p>
             </div>
             <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-200">
@@ -430,7 +433,7 @@ export default function StaffRolesManagement({
                 <tr>
                   <th className="px-4 py-3">Staff Details</th>
                   <th className="px-4 py-3">Assigned Subjects</th>
-                  <th className="px-4 py-3">Password</th>
+                  <th className="px-4 py-3">Role</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
@@ -438,14 +441,14 @@ export default function StaffRolesManagement({
                 {staffUsers.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-8 text-center text-slate-400 text-xs">
-                      No staff accounts created yet.
+                      No staff accounts found.
                     </td>
                   </tr>
                 ) : (
                   staffUsers.map((user) => {
-                    const userSubjects = Array.isArray(user.assigned_subjects) && user.assigned_subjects.length > 0
+                    const userSubjects = Array.isArray(user.assigned_subjects)
                       ? user.assigned_subjects
-                      : (user.assigned_subject && user.assigned_subject !== 'ALL' ? [user.assigned_subject] : []);
+                      : [];
 
                     return (
                       <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
@@ -454,18 +457,18 @@ export default function StaffRolesManagement({
                             {user.name}
                           </div>
                           <div className="text-[11px] text-slate-400 font-mono">
-                            ID: {user.username}
+                            {user.email}
                           </div>
                         </td>
 
                         {/* Assigned Subjects Badges */}
                         <td className="px-4 py-3.5">
                           {userSubjects.length === 0 ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
-                              All Subjects
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              No Subjects Assigned
                             </span>
                           ) : (
-                            <div className="flex flex-wrap gap-1 max-w-[220px]">
+                            <div className="flex flex-wrap gap-1 max-w-[240px]">
                               {userSubjects.map((sub, idx) => (
                                 <span
                                   key={idx}
@@ -479,23 +482,9 @@ export default function StaffRolesManagement({
                         </td>
 
                         <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5 font-mono text-xs text-slate-600">
-                            <span>
-                              {showPasswords[user.id] ? user.password : '••••••••'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(user.id)}
-                              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                              title="Toggle password view"
-                            >
-                              {showPasswords[user.id] ? (
-                                <EyeOff className="w-3.5 h-3.5" />
-                              ) : (
-                                <Eye className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 text-purple-800">
+                            Attendance Staff
+                          </span>
                         </td>
 
                         <td className="px-4 py-3.5 text-right">
@@ -519,7 +508,7 @@ export default function StaffRolesManagement({
           <div className="mt-4 p-3.5 rounded-xl bg-purple-50/60 border border-purple-100 text-xs text-purple-900 flex items-start gap-2">
             <Sparkles className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <strong>Role Access Security:</strong> When a staff member signs in, their user interface will restrict attendance marking strictly to their assigned subjects.
+              <strong>Least-Privilege Enforcement:</strong> The database RLS policy enforces that staff members can only view, mark, and update attendance records for their assigned subjects.
             </div>
           </div>
         </div>
@@ -533,9 +522,9 @@ export default function StaffRolesManagement({
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Delete Staff Member?</h3>
+            <h3 className="text-base font-bold text-slate-900">Revoke Staff Permissions?</h3>
             <p className="text-xs text-slate-500 mt-1 mb-5">
-              Are you sure you want to delete <span className="font-semibold text-slate-800">"{deletingUser.name}"</span>?
+              Are you sure you want to remove permissions for <span className="font-semibold text-slate-800">"{deletingUser.name}"</span>?
             </p>
             <div className="flex items-center justify-center gap-2">
               <button
@@ -551,7 +540,7 @@ export default function StaffRolesManagement({
                 onClick={handleDeleteConfirm}
                 className="px-4 py-2 text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
               >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                {isDeleting ? 'Revoking...' : 'Yes, Revoke'}
               </button>
             </div>
           </div>
