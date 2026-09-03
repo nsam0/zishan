@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Read configuration strictly from Vite environment variables (no hardcoded fallbacks)
-export const SUPABASE_URL = (import.meta?.env?.VITE_SUPABASE_URL || '').trim();
-export const SUPABASE_ANON_KEY = (import.meta?.env?.VITE_SUPABASE_ANON_KEY || '').trim();
+// Note: import.meta.env (no optional chaining) is required for Vite's static replacement at build time
+const _env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
+export const SUPABASE_URL = (_env.VITE_SUPABASE_URL || '').trim();
+export const SUPABASE_ANON_KEY = (_env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
