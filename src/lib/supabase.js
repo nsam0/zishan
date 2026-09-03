@@ -335,9 +335,9 @@ GRANT EXECUTE ON FUNCTION public.admin_delete_staff_user(uuid) TO authenticated;
  */
 export async function fetchStudentsFromDB(role = 'admin') {
   try {
-    const tableOrView = role === 'admin' ? 'students' : 'staff_students_view';
+    // Both admin and staff query public.students directly
     const { data, error } = await supabase
-      .from(tableOrView)
+      .from('students')
       .select('*')
       .order('created_at', { ascending: false });
 

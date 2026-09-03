@@ -587,24 +587,18 @@ export default function AttendanceModule({
 
           {/* Course filter */}
           <div className="relative">
-            {isAdmin ? (
-              <select
-                value={selectedCourse}
-                onChange={(e) => setSelectedCourse(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-hidden focus:border-blue-500 cursor-pointer"
-              >
-                <option value="ALL">All Courses</option>
-                {courses.map((c) => (
-                  <option key={c.id || c.name} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-xs font-semibold text-purple-900 flex items-center gap-1.5">
-                <span>Class: {selectedCourse !== 'ALL' ? selectedCourse : 'Assigned Class'}</span>
-              </div>
-            )}
+            <select
+              value={selectedCourse}
+              onChange={(e) => setSelectedCourse(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-hidden focus:border-blue-500 cursor-pointer"
+            >
+              <option value="ALL">All Courses</option>
+              {courses.map((c) => (
+                <option key={c.id || c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
