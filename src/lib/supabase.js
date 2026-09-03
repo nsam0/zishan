@@ -749,9 +749,21 @@ export async function saveAttendanceToDB(records) {
   if (!records || records.length === 0) return { success: true };
 
   try {
+    const date = records[0].date;
+    const subject = records[0].subject;
+    const studentIds = records.map((r) => r.student_id);
+
+    // Safely delete existing attendance records for these students on this date and subject
+    await supabase
+      .from('attendance_records')
+      .delete()
+      .eq('date', date)
+      .eq('subject', subject)
+      .in('student_id', studentIds);
+
     const { data, error } = await supabase
       .from('attendance_records')
-      .upsert(records, { onConflict: 'date,student_id,subject' })
+      .insert(records)
       .select();
 
     if (error) {

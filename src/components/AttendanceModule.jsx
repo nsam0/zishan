@@ -124,10 +124,16 @@ export default function AttendanceModule({
         if (isMounted) {
           const map = {};
           (res.data || []).forEach((rec) => {
+            let parsedRemark = rec.remark || '';
+            if (!parsedRemark && rec.marked_by && rec.marked_by.includes('[Remark:')) {
+              const match = rec.marked_by.match(/\[Remark:\s*(.*?)\]/);
+              if (match) parsedRemark = match[1];
+            }
             map[rec.student_id] = {
               status: rec.status === 'late' ? 'present' : rec.status,
               timing: rec.timing || (rec.status === 'late' ? 'late' : 'on_time'),
-              grooming: rec.grooming || 'well_groomed'
+              grooming: rec.grooming || 'well_groomed',
+              remark: parsedRemark
             };
           });
           setAttendanceMap(map);
@@ -213,7 +219,8 @@ export default function AttendanceModule({
         [studentId]: {
           status,
           timing: status === 'present' ? (current?.timing || 'on_time') : 'n/a',
-          grooming: status === 'present' ? (current?.grooming || 'well_groomed') : 'n/a'
+          grooming: status === 'present' ? (current?.grooming || 'well_groomed') : 'n/a',
+          remark: current?.remark || ''
         }
       };
     });
@@ -221,7 +228,7 @@ export default function AttendanceModule({
 
   const handleToggleTiming = (studentId, timing) => {
     setAttendanceMap((prev) => {
-      const current = prev[studentId] || { status: 'present', grooming: 'well_groomed' };
+      const current = prev[studentId] || { status: 'present', grooming: 'well_groomed', remark: '' };
       return {
         ...prev,
         [studentId]: {
@@ -235,13 +242,26 @@ export default function AttendanceModule({
 
   const handleToggleGrooming = (studentId, grooming) => {
     setAttendanceMap((prev) => {
-      const current = prev[studentId] || { status: 'present', timing: 'on_time' };
+      const current = prev[studentId] || { status: 'present', timing: 'on_time', remark: '' };
       return {
         ...prev,
         [studentId]: {
           ...current,
           status: 'present',
           grooming
+        }
+      };
+    });
+  };
+
+  const handleRemarkChange = (studentId, remark) => {
+    setAttendanceMap((prev) => {
+      const current = prev[studentId] || { status: 'present', timing: 'on_time', grooming: 'well_groomed' };
+      return {
+        ...prev,
+        [studentId]: {
+          ...current,
+          remark
         }
       };
     });
@@ -255,7 +275,8 @@ export default function AttendanceModule({
         updated[s.id] = {
           status: 'present',
           timing: 'on_time',
-          grooming: 'well_groomed'
+          grooming: 'well_groomed',
+          remark: prev[s.id]?.remark || ''
         };
       });
       return updated;
@@ -282,6 +303,8 @@ export default function AttendanceModule({
       .filter((s) => attendanceMap[s.id]?.status)
       .map((s) => {
         const item = attendanceMap[s.id];
+        const remarkClean = (item.remark || '').trim();
+        const baseMarkedBy = currentUser?.name || currentUser?.username || 'Staff';
         return {
           date: selectedDate,
           student_id: s.id,
@@ -292,7 +315,7 @@ export default function AttendanceModule({
           status: item.status,
           timing: item.status === 'present' ? item.timing : 'n/a',
           grooming: item.status === 'present' ? item.grooming : 'n/a',
-          marked_by: currentUser?.name || currentUser?.username || 'Staff',
+          marked_by: remarkClean ? `${baseMarkedBy} [Remark: ${remarkClean}]` : baseMarkedBy,
           created_at: new Date().toISOString()
         };
       });
@@ -358,24 +381,38 @@ export default function AttendanceModule({
         'Course',
         'Subject',
         'Attendance Status',
-        'Timing (On Time / Late)',
-        'Grooming (Well Groomed / Not)',
+        'On Time (Yes/No)',
+        'Well Groomed (Yes/No)',
+        'Remark',
         'Marked By',
         'Recorded At'
       ];
 
-      const rows = records.map((r) => [
-        sanitizeCsvCell(r.date || ''),
-        sanitizeCsvCell(r.student_name || ''),
-        sanitizeCsvCell(r.roll_number || ''),
-        sanitizeCsvCell(r.course || ''),
-        sanitizeCsvCell(r.subject || ''),
-        sanitizeCsvCell((r.status || '').toUpperCase()),
-        sanitizeCsvCell(r.timing === 'late' ? 'Late' : r.timing === 'on_time' ? 'On Time' : 'N/A'),
-        sanitizeCsvCell(r.grooming === 'not_groomed' ? 'Not Well Groomed' : r.grooming === 'well_groomed' ? 'Well Groomed' : 'N/A'),
-        sanitizeCsvCell(r.marked_by || ''),
-        sanitizeCsvCell(r.created_at || '')
-      ]);
+      const rows = records.map((r) => {
+        let remark = r.remark || '';
+        let staffName = r.marked_by || '';
+        if (!remark && staffName.includes('[Remark:')) {
+          const match = staffName.match(/\[Remark:\s*(.*?)\]/);
+          if (match) {
+            remark = match[1];
+            staffName = staffName.replace(/\[Remark:.*?\]/, '').trim();
+          }
+        }
+
+        return [
+          sanitizeCsvCell(r.date || ''),
+          sanitizeCsvCell(r.student_name || ''),
+          sanitizeCsvCell(r.roll_number || ''),
+          sanitizeCsvCell(r.course || ''),
+          sanitizeCsvCell(r.subject || ''),
+          sanitizeCsvCell((r.status || '').toUpperCase()),
+          sanitizeCsvCell(r.timing === 'late' ? 'No (Late)' : r.timing === 'on_time' ? 'Yes (On Time)' : 'N/A'),
+          sanitizeCsvCell(r.grooming === 'not_groomed' ? 'No (Not Groomed)' : r.grooming === 'well_groomed' ? 'Yes (Well Groomed)' : 'N/A'),
+          sanitizeCsvCell(remark),
+          sanitizeCsvCell(staffName),
+          sanitizeCsvCell(r.created_at || '')
+        ];
+      });
 
       const csvString =
         '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\r\n');
@@ -649,8 +686,9 @@ export default function AttendanceModule({
                   <th scope="col" className="px-4 py-3">Student Details</th>
                   <th scope="col" className="px-4 py-3">Roll & Course</th>
                   <th scope="col" className="px-4 py-3 text-center">Attendance</th>
-                  <th scope="col" className="px-4 py-3 text-center">Timing (On Time / Late)</th>
-                  <th scope="col" className="px-4 py-3 text-center">Grooming (Well Groomed)</th>
+                  <th scope="col" className="px-4 py-3 text-center">On Time (Yes / No)</th>
+                  <th scope="col" className="px-4 py-3 text-center">Well Groomed (Yes / No)</th>
+                  <th scope="col" className="px-4 py-3">Remark / Reason</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -730,70 +768,81 @@ export default function AttendanceModule({
                         </div>
                       </td>
 
-                      {/* 2. Timing Toggle (On Time / Late) */}
+                      {/* 2. On Time (Yes / No) */}
                       <td className="px-4 py-3 text-center">
                         {isPresent ? (
                           <div className="inline-flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 gap-1">
                             <button
                               type="button"
                               onClick={() => handleToggleTiming(student.id, 'on_time')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 !isLate
-                                  ? 'bg-blue-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50'
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50'
                               }`}
                             >
-                              ⏰ On Time
+                              ✓ Yes
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleToggleTiming(student.id, 'late')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 isLate
                                   ? 'bg-amber-600 text-white shadow-xs'
                                   : 'text-slate-600 hover:text-amber-700 hover:bg-amber-50'
                               }`}
                             >
-                              ⚠️ Late
+                              ✗ No (Late)
                             </button>
                           </div>
                         ) : (
-                          <span className="text-slate-300 text-xs italic">—</span>
+                          <span className="text-slate-300 text-xs italic">N/A</span>
                         )}
                       </td>
 
-                      {/* 3. Grooming Toggle (Well Groomed / Not Groomed) */}
+                      {/* 3. Well Groomed (Yes / No) */}
                       <td className="px-4 py-3 text-center">
                         {isPresent ? (
                           <div className="inline-flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 gap-1">
                             <button
                               type="button"
                               onClick={() => handleToggleGrooming(student.id, 'well_groomed')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 !isNotGroomed
-                                  ? 'bg-indigo-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50'
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50'
                               }`}
                             >
-                              👔 Well Groomed
+                              ✓ Yes
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleToggleGrooming(student.id, 'not_groomed')}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 isNotGroomed
                                   ? 'bg-rose-600 text-white shadow-xs'
                                   : 'text-slate-600 hover:text-rose-700 hover:bg-rose-50'
                               }`}
                             >
-                              ❌ Not Groomed
+                              ✗ No
                             </button>
                           </div>
                         ) : (
-                          <span className="text-slate-300 text-xs italic">—</span>
+                          <span className="text-slate-300 text-xs italic">N/A</span>
                         )}
+                      </td>
+
+                      {/* 4. Remark / Reason */}
+                      <td className="px-4 py-3">
+                        <input
+                          type="text"
+                          value={mark?.remark || ''}
+                          onChange={(e) => handleRemarkChange(student.id, e.target.value)}
+                          placeholder="e.g. Late 10m, No tie, Unshaved..."
+                          className="w-full min-w-[150px] px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 focus:bg-white text-slate-700 transition-all"
+                        />
                       </td>
                     </tr>
                   );
