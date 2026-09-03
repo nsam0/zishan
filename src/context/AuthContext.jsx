@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch verified profile and staff subject assignments
-  const loadUserProfile = useCallback(async (userId) => {
+  const loadUserProfile = useCallback(async (userId, userEmail = '') => {
     if (!userId || !supabase) {
       setProfile(null);
       setAssignedSubjects([]);
@@ -30,12 +30,25 @@ export function AuthProvider({ children }) {
         console.warn('Could not fetch user profile:', profError.message);
       }
 
+      // Check if this is the designated Head Admin
+      const isPrimaryAdmin =
+        userEmail === 'ansari74108@gmail.com' ||
+        prof?.role === 'admin';
+
       const activeProfile = prof || {
         id: userId,
-        role: 'attendance_staff',
-        full_name: 'User',
-        email: ''
+        role: isPrimaryAdmin ? 'admin' : 'attendance_staff',
+        full_name: isPrimaryAdmin ? 'Head Admin' : 'User',
+        email: userEmail
       };
+
+      if (isPrimaryAdmin) {
+        activeProfile.role = 'admin';
+        if (!activeProfile.full_name || activeProfile.full_name === 'User') {
+          activeProfile.full_name = 'Head Admin';
+        }
+      }
+
       setProfile(activeProfile);
 
       // 2. Fetch subject assignments if attendance staff
@@ -57,9 +70,16 @@ export function AuthProvider({ children }) {
       return activeProfile;
     } catch (err) {
       console.error('loadUserProfile error:', err);
-      setProfile(null);
+      const isPrimaryAdmin = userEmail === 'ansari74108@gmail.com';
+      const fallback = {
+        id: userId,
+        role: isPrimaryAdmin ? 'admin' : 'attendance_staff',
+        full_name: isPrimaryAdmin ? 'Head Admin' : 'User',
+        email: userEmail
+      };
+      setProfile(fallback);
       setAssignedSubjects([]);
-      return null;
+      return fallback;
     }
   }, []);
 
@@ -80,7 +100,7 @@ export function AuthProvider({ children }) {
         if (initialSession) {
           setSession(initialSession);
           setUser(initialSession.user);
-          await loadUserProfile(initialSession.user.id);
+          await loadUserProfile(initialSession.user.id, initialSession.user.email);
         } else {
           setSession(null);
           setUser(null);
@@ -105,7 +125,7 @@ export function AuthProvider({ children }) {
         setUser(currentSession?.user || null);
 
         if (currentSession?.user) {
-          await loadUserProfile(currentSession.user.id);
+          await loadUserProfile(currentSession.user.id, currentSession.user.email);
         } else {
           setProfile(null);
           setAssignedSubjects([]);
@@ -141,7 +161,7 @@ export function AuthProvider({ children }) {
     if (data?.user) {
       setUser(data.user);
       setSession(data.session);
-      await loadUserProfile(data.user.id);
+      await loadUserProfile(data.user.id, data.user.email);
     }
 
     return data;
