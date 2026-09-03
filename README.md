@@ -37,12 +37,38 @@ CREATE TABLE IF NOT EXISTS public.students (
 -- 2. Enable Row Level Security (RLS)
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 
--- 3. Allow Public/Anon access
-DROP POLICY IF EXISTS "Allow public all access" ON public.students;
-CREATE POLICY "Allow public all access" ON public.students
+-- 3. Secure Least-Privilege RLS Policies
+-- Revoke all unauthenticated public access
+REVOKE ALL ON public.students FROM anon;
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.students TO authenticated;
+
+-- Allow authenticated users (Admin and verified Staff) to view students
+DROP POLICY IF EXISTS "Allow authenticated read students" ON public.students;
+CREATE POLICY "Allow authenticated read students" ON public.students
+    FOR SELECT
+    TO authenticated
+    USING (true);
+
+-- Allow only authorized Administrators to insert, update, or delete students
+DROP POLICY IF EXISTS "Allow admin to manage students" ON public.students;
+CREATE POLICY "Allow admin to manage students" ON public.students
     FOR ALL
-    USING (true)
-    WITH CHECK (true);
+    TO authenticated
+    USING (
+      auth.jwt() ->> 'email' = 'ansari74108@gmail.com'
+      OR EXISTS (
+        SELECT 1 FROM public.staff_users
+        WHERE staff_users.id = auth.uid() AND staff_users.role = 'admin'
+      )
+    )
+    WITH CHECK (
+      auth.jwt() ->> 'email' = 'ansari74108@gmail.com'
+      OR EXISTS (
+        SELECT 1 FROM public.staff_users
+        WHERE staff_users.id = auth.uid() AND staff_users.role = 'admin'
+      )
+    );
 ```
 
 > **Note:** The app features automatic offline & local storage fallback. Even if the Supabase table has not been created yet, you can add, edit, search, and delete students locally without any error! Once you run the SQL script in Supabase, click "Test Connection" inside the app to sync.
