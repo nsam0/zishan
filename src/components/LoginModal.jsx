@@ -5,19 +5,38 @@ import { useAuth } from '../context/AuthContext';
 export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
   const { signIn, signOut } = useAuth();
   
-  // Portal Tab: 'admin' or 'staff'
-  const [portalType, setPortalType] = useState('admin');
+  // Portal Tab: 'admin' or 'staff' (auto-detected from URL path)
+  const [portalType, setPortalType] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('staff') || path.includes('teacher')) return 'staff';
+    }
+    return 'admin';
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  if (!isOpen) return null;
+  // Sync URL when modal opens or path changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('staff') || path.includes('teacher')) {
+        setPortalType('staff');
+      } else if (path.includes('admin')) {
+        setPortalType('admin');
+      }
+    }
+  }, []);
 
   const handlePortalSwitch = (type) => {
     setPortalType(type);
     setError(null);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', type === 'admin' ? '/admin' : '/staff');
+    }
   };
 
   const handleLogin = async (e) => {
