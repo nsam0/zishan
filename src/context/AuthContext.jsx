@@ -18,15 +18,31 @@ export function AuthProvider({ children }) {
       return null;
     }
 
+    const normalizedEmail = (userEmail || '').trim().toLowerCase();
+    const isPrimaryAdmin = normalizedEmail === 'ansari74108@gmail.com';
+
+    // 1. Instant resolution for Head Admin
+    if (isPrimaryAdmin) {
+      const adminProfile = {
+        id: userId,
+        role: 'admin',
+        full_name: 'Head Admin',
+        email: 'ansari74108@gmail.com'
+      };
+      setProfile(adminProfile);
+      setAssignedSubjects([]);
+      return adminProfile;
+    }
+
+    // 2. Resolution for Teacher / Staff from public.staff_users
     try {
-      // 1. Check if user is in staff_users table
       const { data: staffData } = await supabase
         .from('staff_users')
-        .select('*')
+        .select('id, name, email, role, assigned_subjects')
         .eq('id', userId)
         .maybeSingle();
 
-      if (staffData && userEmail !== 'ansari74108@gmail.com') {
+      if (staffData) {
         const staffProfile = {
           id: staffData.id,
           role: staffData.role || 'attendance_staff',
@@ -38,63 +54,23 @@ export function AuthProvider({ children }) {
         return staffProfile;
       }
 
-      // 2. Fetch profile from public.profiles
-      const { data: prof, error: profError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (profError) {
-        console.warn('Could not fetch user profile:', profError.message);
-      }
-
-      // Check if this is the designated Head Admin
-      const isPrimaryAdmin =
-        userEmail === 'ansari74108@gmail.com' ||
-        prof?.role === 'admin';
-
-      const activeProfile = prof || {
-        id: userId,
-        role: isPrimaryAdmin ? 'admin' : 'attendance_staff',
-        full_name: isPrimaryAdmin ? 'Head Admin' : 'User',
-        email: userEmail
-      };
-
-      if (isPrimaryAdmin) {
-        activeProfile.role = 'admin';
-        if (!activeProfile.full_name || activeProfile.full_name === 'User') {
-          activeProfile.full_name = 'Head Admin';
-        }
-      }
-
-      setProfile(activeProfile);
-
-      // 2. Fetch subject assignments if attendance staff
-      if (activeProfile.role === 'attendance_staff') {
-        const { data: assignments, error: aError } = await supabase
-          .from('staff_subject_assignments')
-          .select('subject_name')
-          .eq('staff_id', userId);
-
-        if (!aError && assignments) {
-          setAssignedSubjects(assignments.map((a) => a.subject_name));
-        } else {
-          setAssignedSubjects([]);
-        }
-      } else {
-        setAssignedSubjects([]);
-      }
-
-      return activeProfile;
-    } catch (err) {
-      console.error('loadUserProfile error:', err);
-      const isPrimaryAdmin = userEmail === 'ansari74108@gmail.com';
+      // Fallback staff profile
       const fallback = {
         id: userId,
-        role: isPrimaryAdmin ? 'admin' : 'attendance_staff',
-        full_name: isPrimaryAdmin ? 'Head Admin' : 'User',
-        email: userEmail
+        role: 'attendance_staff',
+        full_name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Teacher',
+        email: normalizedEmail
+      };
+      setProfile(fallback);
+      setAssignedSubjects([]);
+      return fallback;
+    } catch (err) {
+      console.error('loadUserProfile error:', err);
+      const fallback = {
+        id: userId,
+        role: 'attendance_staff',
+        full_name: 'Teacher',
+        email: normalizedEmail
       };
       setProfile(fallback);
       setAssignedSubjects([]);
@@ -116,7 +92,7 @@ export function AuthProvider({ children }) {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         if (!mounted) return;
 
-        if (initialSession) {
+        if (initialSession?.user) {
           setSession(initialSession);
           setUser(initialSession.user);
           await loadUserProfile(initialSession.user.id, initialSession.user.email);
@@ -135,21 +111,26 @@ export function AuthProvider({ children }) {
 
     initAuth();
 
-    // Subscribe to auth state changes
+    // Subscribe to auth state changes (strictly non-blocking to prevent navigator.locks deadlocks)
     const { data: { subscription } = {} } = supabase.auth.onAuthStateChange(
-      async (event, currentSession) => {
+      (event, currentSession) => {
         if (!mounted) return;
 
         setSession(currentSession);
         setUser(currentSession?.user || null);
+        setIsLoading(false);
 
         if (currentSession?.user) {
-          await loadUserProfile(currentSession.user.id, currentSession.user.email);
+          // Defer loadUserProfile to next tick so auth storage lock is released
+          setTimeout(() => {
+            if (mounted) {
+              loadUserProfile(currentSession.user.id, currentSession.user.email);
+            }
+          }, 0);
         } else {
           setProfile(null);
           setAssignedSubjects([]);
         }
-        setIsLoading(false);
       }
     );
 
@@ -165,7 +146,7 @@ export function AuthProvider({ children }) {
       throw new Error('Supabase client is not initialized. Please verify your environment configuration.');
     }
 
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -177,14 +158,28 @@ export function AuthProvider({ children }) {
       throw error;
     }
 
-    let loadedProfile = null;
     if (data?.user) {
       setUser(data.user);
       setSession(data.session);
-      loadedProfile = await loadUserProfile(data.user.id, data.user.email);
     }
 
-    return { ...data, profile: loadedProfile };
+    // Immediate profile shape
+    const isPrimaryAdmin = cleanEmail === 'ansari74108@gmail.com';
+    const initialProf = {
+      id: data?.user?.id,
+      role: isPrimaryAdmin ? 'admin' : 'attendance_staff',
+      full_name: isPrimaryAdmin ? 'Head Admin' : cleanEmail.split('@')[0],
+      email: cleanEmail
+    };
+
+    // Trigger full profile load asynchronously
+    if (data?.user) {
+      setTimeout(() => {
+        loadUserProfile(data.user.id, data.user.email);
+      }, 0);
+    }
+
+    return { ...data, profile: initialProf };
   };
 
   // Sign Out cleanly
