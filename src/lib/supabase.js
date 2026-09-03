@@ -1,23 +1,38 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Read configuration exclusively from Vite environment variables
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Read configuration from Vite environment variables with fallback
+export const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || 'https://vznyiuhotopctbssnpjn.supabase.co';
+export const SUPABASE_ANON_KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnlpdWhvdG9wY3Ric3NucGpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyOTMyMjQsImV4cCI6MjEwMjg2OTIyNH0.Fs-AwPDYBNkhnvHSxcKmqci6lqLxKAXiyPYNkiOE14A';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    '[Security Warning] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not defined. Please verify your .env file.'
-  );
+export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+function createSafeSupabaseClient() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.warn(
+      '[Security Warning] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not defined. Please verify your environment settings.'
+    );
+    return null;
+  }
+  try {
+    return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+  } catch (err) {
+    console.error('Failed to initialize Supabase client:', err);
+    return null;
+  }
 }
 
 // Single authenticated Supabase client using public publishable anon key
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
-});
+export const supabase = createSafeSupabaseClient();
+
 
 export const SQL_SETUP_SCRIPT = `-- Global Skill Education: Production Database & Least-Privilege RLS Setup
 -- Copy and run this script in Supabase Dashboard -> SQL Editor

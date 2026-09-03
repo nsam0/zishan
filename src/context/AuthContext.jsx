@@ -12,7 +12,7 @@ export function AuthProvider({ children }) {
 
   // Fetch verified profile and staff subject assignments
   const loadUserProfile = useCallback(async (userId) => {
-    if (!userId) {
+    if (!userId || !supabase) {
       setProfile(null);
       setAssignedSubjects([]);
       return null;
@@ -67,6 +67,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    if (!supabase) {
+      setIsLoading(false);
+      return;
+    }
+
     async function initAuth() {
       try {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
@@ -92,7 +97,7 @@ export function AuthProvider({ children }) {
     initAuth();
 
     // Subscribe to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } = {} } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         if (!mounted) return;
 
@@ -117,6 +122,10 @@ export function AuthProvider({ children }) {
 
   // Sign In using Supabase Auth
   const signIn = async (email, password) => {
+    if (!supabase) {
+      throw new Error('Supabase client is not initialized. Please verify your environment configuration.');
+    }
+
     const cleanEmail = email.trim();
     const cleanPassword = password.trim();
 
@@ -141,7 +150,9 @@ export function AuthProvider({ children }) {
   // Sign Out cleanly
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
     } catch (err) {
       console.warn('Error signing out from Supabase:', err.message);
     } finally {

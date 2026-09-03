@@ -8,6 +8,17 @@ export default defineConfig({
     react(),
     tailwindcss()
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          supabase: ['@supabase/supabase-js'],
+          icons: ['lucide-react']
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     host: true,
