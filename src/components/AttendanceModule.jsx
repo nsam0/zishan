@@ -770,68 +770,60 @@ export default function AttendanceModule({
 
                       {/* 2. On Time (Yes / No) */}
                       <td className="px-4 py-3 text-center">
-                        {isPresent ? (
-                          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleTiming(student.id, 'on_time')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                !isLate
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50'
-                              }`}
-                            >
-                              ✓ Yes
-                            </button>
+                        <div className={`inline-flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 gap-1 ${isAbsent ? 'opacity-40 pointer-events-none' : ''}`}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTiming(student.id, 'on_time')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isPresent && mark?.timing === 'on_time'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50'
+                            }`}
+                          >
+                            ✓ Yes
+                          </button>
 
-                            <button
-                              type="button"
-                              onClick={() => handleToggleTiming(student.id, 'late')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                isLate
-                                  ? 'bg-amber-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-amber-700 hover:bg-amber-50'
-                              }`}
-                            >
-                              ✗ No (Late)
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-300 text-xs italic">N/A</span>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTiming(student.id, 'late')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isPresent && mark?.timing === 'late'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-amber-700 hover:bg-amber-50'
+                            }`}
+                          >
+                            ✗ No (Late)
+                          </button>
+                        </div>
                       </td>
 
                       {/* 3. Well Groomed (Yes / No) */}
                       <td className="px-4 py-3 text-center">
-                        {isPresent ? (
-                          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleGrooming(student.id, 'well_groomed')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                !isNotGroomed
-                                  ? 'bg-blue-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50'
-                              }`}
-                            >
-                              ✓ Yes
-                            </button>
+                        <div className={`inline-flex items-center p-1 rounded-xl bg-slate-100/90 border border-slate-200/80 gap-1 ${isAbsent ? 'opacity-40 pointer-events-none' : ''}`}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleGrooming(student.id, 'well_groomed')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isPresent && mark?.grooming === 'well_groomed'
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50'
+                            }`}
+                          >
+                            ✓ Yes
+                          </button>
 
-                            <button
-                              type="button"
-                              onClick={() => handleToggleGrooming(student.id, 'not_groomed')}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                isNotGroomed
-                                  ? 'bg-rose-600 text-white shadow-xs'
-                                  : 'text-slate-600 hover:text-rose-700 hover:bg-rose-50'
-                              }`}
-                            >
-                              ✗ No
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-300 text-xs italic">N/A</span>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleGrooming(student.id, 'not_groomed')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              isPresent && mark?.grooming === 'not_groomed'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'text-slate-600 hover:text-rose-700 hover:bg-rose-50'
+                            }`}
+                          >
+                            ✗ No
+                          </button>
+                        </div>
                       </td>
 
                       {/* 4. Remark / Reason */}
