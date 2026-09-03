@@ -5,9 +5,7 @@ import {
   Users,
   BookOpen,
   ChevronRight,
-  Database,
-  Shield,
-  Lock
+  Shield
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -92,46 +90,6 @@ export default function Sidebar({
             })}
           </nav>
         </div>
-
-        {/* Database & Supabase Status Card */}
-        {isAdmin && (
-          <div className="mt-6 p-3.5 rounded-xl bg-slate-100/90 border border-slate-200/80 text-xs">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-blue-600" />
-                Supabase Status
-              </span>
-              {dbStatus.isTableMissing ? (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
-                  Setup Needed
-                </span>
-              ) : dbStatus.isConnected ? (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800">
-                  Connected
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-700">
-                  Offline Mode
-                </span>
-              )}
-            </div>
-
-            <p className="text-slate-500 text-[11px] leading-relaxed mb-2">
-              {dbStatus.isTableMissing
-                ? 'Database setup pending in Supabase.'
-                : 'Synced with Supabase Cloud DB.'}
-            </p>
-
-            {dbStatus.isTableMissing && (
-              <button
-                onClick={onOpenSqlModal}
-                className="w-full text-center py-1 px-2 rounded-lg bg-blue-600 text-white text-[11px] font-medium hover:bg-blue-700 transition-colors shadow-2xs cursor-pointer"
-              >
-                Run SQL in Supabase
-              </button>
-            )}
-          </div>
-        )}
       </aside>
     </>
   );
