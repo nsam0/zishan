@@ -181,6 +181,147 @@ CREATE POLICY "attendance_delete" ON public.attendance_records FOR DELETE TO aut
 
 CREATE POLICY "leaderboard_select" ON public.leaderboard_scores FOR SELECT TO authenticated USING (public.is_admin() OR public.is_attendance_staff());
 CREATE POLICY "leaderboard_manage" ON public.leaderboard_scores FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- 11. Trigger: Auto-create Profile on Auth Signup / User Creation
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    COALESCE(NEW.raw_user_meta_data->>'role', 'attendance_staff')
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 12. RPC Function: Admin Creates / Updates Teacher Account with Email & Password
+CREATE OR REPLACE FUNCTION public.admin_create_staff_user(
+  staff_email text,
+  staff_password text,
+  staff_name text,
+  assigned_subjects text[] DEFAULT ARRAY[]::text[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  target_user_id uuid;
+  subj text;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied. Only administrators can create or update teacher accounts.';
+  END IF;
+
+  IF staff_email IS NULL OR length(trim(staff_email)) = 0 THEN
+    RAISE EXCEPTION 'Teacher email is required.';
+  END IF;
+  IF staff_password IS NULL OR length(staff_password) < 6 THEN
+    RAISE EXCEPTION 'Password must be at least 6 characters long.';
+  END IF;
+
+  SELECT id INTO target_user_id FROM auth.users WHERE email = lower(trim(staff_email));
+
+  IF target_user_id IS NOT NULL THEN
+    UPDATE auth.users
+    SET encrypted_password = crypt(staff_password, gen_salt('bf')),
+        updated_at = now()
+    WHERE id = target_user_id;
+
+    UPDATE public.profiles
+    SET full_name = staff_name,
+        role = 'attendance_staff',
+        updated_at = now()
+    WHERE id = target_user_id;
+  ELSE
+    target_user_id := gen_random_uuid();
+
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      target_user_id,
+      'authenticated',
+      'authenticated',
+      lower(trim(staff_email)),
+      crypt(staff_password, gen_salt('bf')),
+      now(),
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      jsonb_build_object('full_name', staff_name, 'role', 'attendance_staff'),
+      now(),
+      now()
+    );
+
+    INSERT INTO public.profiles (id, email, full_name, role)
+    VALUES (target_user_id, lower(trim(staff_email)), staff_name, 'attendance_staff')
+    ON CONFLICT (id) DO UPDATE
+    SET full_name = EXCLUDED.full_name,
+        role = 'attendance_staff',
+        updated_at = now();
+  END IF;
+
+  DELETE FROM public.staff_subject_assignments WHERE staff_id = target_user_id;
+
+  IF array_length(assigned_subjects, 1) > 0 THEN
+    FOREACH subj IN ARRAY assigned_subjects LOOP
+      INSERT INTO public.staff_subject_assignments (staff_id, subject_name)
+      VALUES (target_user_id, subj)
+      ON CONFLICT (staff_id, subject_name) DO NOTHING;
+    END LOOP;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'user_id', target_user_id,
+    'email', lower(trim(staff_email)),
+    'name', staff_name
+  );
+END;
+$$;
+
+-- 13. RPC Function: Admin Deletes Teacher Account
+CREATE OR REPLACE FUNCTION public.admin_delete_staff_user(target_user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Access denied. Only administrators can delete teacher accounts.';
+  END IF;
+
+  DELETE FROM public.staff_subject_assignments WHERE staff_id = target_user_id;
+  DELETE FROM public.profiles WHERE id = target_user_id;
+  DELETE FROM auth.users WHERE id = target_user_id;
+
+  RETURN true;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_create_staff_user(text, text, text, text[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_delete_staff_user(uuid) TO authenticated;
 `;
 
 /* ==========================================================================
@@ -462,10 +603,50 @@ export async function assignStaffSubjectsInDB(staffId, subjectNames = []) {
 }
 
 /**
- * Delete a staff profile
+ * Create or update a staff/teacher user with official email, password, and assigned subjects.
+ * Invokes the secure Postgres RPC function 'admin_create_staff_user'.
+ */
+export async function createStaffUserInDB({ name, email, password, assigned_subjects = [] }) {
+  if (!supabase) {
+    return { success: false, error: 'Supabase client is not initialized.' };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('admin_create_staff_user', {
+      staff_email: email.trim().toLowerCase(),
+      staff_password: password.trim(),
+      staff_name: name.trim(),
+      assigned_subjects: assigned_subjects
+    });
+
+    if (error) {
+      console.error('admin_create_staff_user RPC error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data, error: null };
+  } catch (err) {
+    console.error('createStaffUserInDB exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Delete a staff profile and its auth user cleanly
  */
 export async function deleteStaffUserFromDB(id) {
+  if (!supabase) return { success: false, error: 'Supabase not initialized' };
   try {
+    // Try deleting via RPC to remove from auth.users
+    const { error: rpcError } = await supabase.rpc('admin_delete_staff_user', {
+      target_user_id: id
+    });
+
+    if (!rpcError) {
+      return { success: true, error: null };
+    }
+
+    // Fallback: delete from public.profiles
     const { error } = await supabase.from('profiles').delete().eq('id', id);
     if (error) {
       return { success: false, error: error.message };
@@ -475,6 +656,7 @@ export async function deleteStaffUserFromDB(id) {
     return { success: false, error: err.message };
   }
 }
+
 
 /* ==========================================================================
    ATTENDANCE RECORDS API

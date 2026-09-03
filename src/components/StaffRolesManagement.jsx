@@ -13,9 +13,12 @@ import {
   BookOpen,
   Pencil,
   Check,
-  Info
+  Info,
+  Key,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { supabase, assignStaffSubjectsInDB, deleteStaffUserFromDB } from '../lib/supabase';
+import { supabase, createStaffUserInDB, deleteStaffUserFromDB } from '../lib/supabase';
 import { isValidEmail } from '../lib/security';
 
 export default function StaffRolesManagement({
@@ -26,6 +29,8 @@ export default function StaffRolesManagement({
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedSubjects, setSelectedSubjects] = useState([]);
   const [isSubjectSelectionDone, setIsSubjectSelectionDone] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,6 +58,7 @@ export default function StaffRolesManagement({
     e.preventDefault();
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
 
     if (!cleanName || !cleanEmail) {
       setMessage({ type: 'error', text: 'Full Name and Official Email are required!' });
@@ -60,14 +66,19 @@ export default function StaffRolesManagement({
     }
 
     if (!isValidEmail(cleanEmail)) {
-      setMessage({ type: 'error', text: 'Please enter a valid email address format (e.g. staff@example.com).' });
+      setMessage({ type: 'error', text: 'Please enter a valid email address format (e.g. teacher@example.com).' });
+      return;
+    }
+
+    if (!cleanPassword || cleanPassword.length < 6) {
+      setMessage({ type: 'error', text: 'Password must be at least 6 characters long!' });
       return;
     }
 
     if (selectedSubjects.length === 0) {
       setMessage({
         type: 'error',
-        text: 'Please select and confirm at least 1 subject to grant attendance permissions!'
+        text: 'Please select and confirm at least 1 subject/class to grant attendance permissions!'
       });
       return;
     }
@@ -76,56 +87,31 @@ export default function StaffRolesManagement({
     setMessage(null);
 
     try {
-      // Check if user already exists in auth or profiles
-      const { data: existingProfiles } = await supabase
-        .from('profiles')
-        .select('id, email')
-        .eq('email', cleanEmail)
-        .maybeSingle();
+      const res = await createStaffUserInDB({
+        name: cleanName,
+        email: cleanEmail,
+        password: cleanPassword,
+        assigned_subjects: selectedSubjects
+      });
 
-      let targetUserId = existingProfiles?.id;
-
-      if (!targetUserId) {
-        // Look up auth user if available or guide admin
-        setMessage({
-          type: 'info',
-          text: `Note: If "${cleanEmail}" does not exist in Supabase Auth yet, please invite or create the user in Supabase Dashboard -> Authentication -> Users. We are linking permissions now.`
-        });
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to create teacher account');
       }
 
-      // If user profile exists, update profile and assign subjects
-      if (targetUserId) {
-        await supabase
-          .from('profiles')
-          .update({
-            full_name: cleanName,
-            role: 'attendance_staff',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', targetUserId);
-
-        await assignStaffSubjectsInDB(targetUserId, selectedSubjects);
-
-        setMessage({
-          type: 'success',
-          text: `Staff permissions successfully updated for "${cleanName}" with ${selectedSubjects.length} subject(s)!`
-        });
-      } else {
-        // Fallback: If not yet in auth.users, inform admin how to complete setup
-        setMessage({
-          type: 'warning',
-          text: `Profile for "${cleanEmail}" will activate when the user is created in Supabase Authentication. Password must be set securely via Supabase Auth.`
-        });
-      }
+      setMessage({
+        type: 'success',
+        text: `Teacher account for "${cleanName}" (${cleanEmail}) created successfully! They can now log in with the password you set.`
+      });
 
       setName('');
       setEmail('');
+      setPassword('');
       setSelectedSubjects([]);
       setIsSubjectSelectionDone(false);
 
       if (onStaffAdded) {
         onStaffAdded({
-          id: targetUserId || 'temp-' + Date.now(),
+          id: res.data?.user_id || 'staff-' + Date.now(),
           name: cleanName,
           email: cleanEmail,
           username: cleanEmail,
@@ -135,7 +121,10 @@ export default function StaffRolesManagement({
         });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Failed to save staff permissions.' });
+      setMessage({
+        type: 'error',
+        text: err.message || 'Failed to create teacher account. Please ensure the SQL setup script has been executed in Supabase.'
+      });
     } finally {
       setIsSubmitting(false);
       setTimeout(() => {
@@ -252,11 +241,42 @@ export default function StaffRolesManagement({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. rahul@example.com"
+                  placeholder="e.g. teacher@example.com"
                   className="w-full pl-9 pr-3 py-2 bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:border-purple-500"
                 />
               </div>
             </div>
+
+            {/* Teacher Password */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 uppercase mb-1">
+                Teacher Login Password <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <Key className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Set password (min 6 characters)"
+                  className="w-full pl-9 pr-10 py-2 bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:border-purple-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Teacher will log in directly using this email and password.
+              </p>
+            </div>
+
 
             {/* MULTI-SELECT SUBJECT ACCESS WITH DONE / EDIT WORKFLOW */}
             <div>
@@ -387,13 +407,13 @@ export default function StaffRolesManagement({
               </p>
             </div>
 
-            {/* Password Security Notice */}
-            <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-950 flex items-start gap-2">
-              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            {/* Teacher Setup Notice */}
+            <div className="p-3 bg-purple-50/70 border border-purple-100 rounded-xl text-xs text-purple-950 flex items-start gap-2">
+              <Info className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
               <div>
-                <strong>Zero Plaintext Passwords:</strong>
-                <p className="text-[11px] text-blue-800 mt-0.5">
-                  Staff members manage their passwords securely through Supabase Auth (via invitation or password reset email). No plaintext passwords are ever stored or exposed.
+                <strong>Direct Account Creation:</strong>
+                <p className="text-[11px] text-purple-800 mt-0.5">
+                  The teacher will be created with this email, password, and assigned subject(s). They will only be able to mark attendance for their authorized subjects.
                 </p>
               </div>
             </div>
@@ -408,7 +428,7 @@ export default function StaffRolesManagement({
               ) : (
                 <UserPlus className="w-4 h-4" />
               )}
-              <span>Assign Staff Permissions</span>
+              <span>Create Teacher Account</span>
             </button>
           </form>
         </div>

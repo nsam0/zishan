@@ -49,7 +49,7 @@ export default function AttendanceModule({
     if (currentUser.assigned_subject && currentUser.assigned_subject !== 'ALL') {
       return [currentUser.assigned_subject];
     }
-    return null;
+    return []; // Return empty array so unassigned staff cannot access all subjects
   }, [currentUser]);
 
   // List of subjects available to this user
@@ -71,6 +71,8 @@ export default function AttendanceModule({
     return subjects.length > 0 ? subjects[0].name : 'General';
   });
 
+  const isAdmin = currentUser?.role === 'admin';
+
   // Keep selectedSubject updated if user or subjects change
   useEffect(() => {
     if (allowedSubjects && allowedSubjects.length > 0) {
@@ -81,6 +83,17 @@ export default function AttendanceModule({
       setSelectedSubject(subjects[0].name);
     }
   }, [allowedSubjects, subjects]);
+
+  // Auto-sync class/course to the selected subject's course for teachers
+  useEffect(() => {
+    if (!isAdmin && selectedSubject) {
+      const match = subjects.find((s) => s.name === selectedSubject);
+      if (match?.course_name) {
+        setSelectedCourse(match.course_name);
+      }
+    }
+  }, [isAdmin, selectedSubject, subjects]);
+
 
   // Attendance state: { [student_id]: { status: 'present'|'absent', timing: 'on_time'|'late', grooming: 'well_groomed'|'not_groomed' } }
   const [attendanceMap, setAttendanceMap] = useState({});
@@ -385,8 +398,6 @@ export default function AttendanceModule({
     }
   };
 
-  const isAdmin = currentUser?.role === 'admin';
-
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 sm:p-7 space-y-6">
       
@@ -444,7 +455,7 @@ export default function AttendanceModule({
       </div>
 
       {/* Staff Subject Permission Notice */}
-      {allowedSubjects && (
+      {allowedSubjects && allowedSubjects.length > 0 && (
         <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-center justify-between gap-2 animate-fade-in flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             <Lock className="w-4 h-4 text-purple-600 shrink-0" />
@@ -461,6 +472,19 @@ export default function AttendanceModule({
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff with No Assigned Subjects Notice */}
+      {!isAdmin && allowedSubjects && allowedSubjects.length === 0 && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 flex items-center gap-2.5 animate-fade-in">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+          <div>
+            <strong>No Assigned Class / Subject:</strong>
+            <p className="text-[11px] text-amber-800 mt-0.5">
+              Your teacher account has not been assigned to any class or subject yet. Please ask the administrator to assign your subjects in Staff Roles.
+            </p>
           </div>
         </div>
       )}
@@ -563,18 +587,24 @@ export default function AttendanceModule({
 
           {/* Course filter */}
           <div className="relative">
-            <select
-              value={selectedCourse}
-              onChange={(e) => setSelectedCourse(e.target.value)}
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-hidden focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">All Courses</option>
-              {courses.map((c) => (
-                <option key={c.id || c.name} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            {isAdmin ? (
+              <select
+                value={selectedCourse}
+                onChange={(e) => setSelectedCourse(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-hidden focus:border-blue-500 cursor-pointer"
+              >
+                <option value="ALL">All Courses</option>
+                {courses.map((c) => (
+                  <option key={c.id || c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-xs font-semibold text-purple-900 flex items-center gap-1.5">
+                <span>Class: {selectedCourse !== 'ALL' ? selectedCourse : 'Assigned Class'}</span>
+              </div>
+            )}
           </div>
         </div>
 
