@@ -152,9 +152,9 @@ CREATE OR REPLACE VIEW public.staff_students_view WITH (security_invoker = false
     SELECT id, name, roll_number, course, created_at FROM public.students;
 
 -- 10. Permissions & Least-Privilege RLS Policies
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
-REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM anon;
-GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role, supabase_auth_admin;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, service_role, supabase_auth_admin;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, service_role, supabase_auth_admin;
 
 -- Idempotent view privileges for staff_students_view (preserves postgres/service_role)
 REVOKE ALL ON TABLE public.staff_students_view FROM anon;
