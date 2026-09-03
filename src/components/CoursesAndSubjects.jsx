@@ -49,6 +49,18 @@ export default function CoursesAndSubjects({
   const [deletingSubject, setDeletingSubject] = useState(null);
   const [isDeletingSubject, setIsDeletingSubject] = useState(false);
 
+  // Close modals on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (deletingCourse) setDeletingCourse(null);
+        if (deletingSubject) setDeletingSubject(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deletingCourse, deletingSubject]);
+
   // Filter courses
   const filteredCourses = courses.filter((c) =>
     (c.name || '').toLowerCase().includes(courseSearch.toLowerCase()) ||
@@ -126,7 +138,7 @@ export default function CoursesAndSubjects({
       }
       setDeletingCourse(null);
     } catch (err) {
-      alert('Error deleting course: ' + err.message);
+      setCourseMsg({ type: 'error', text: 'Error deleting course: ' + err.message });
     } finally {
       setIsDeletingCourse(false);
     }
@@ -191,7 +203,7 @@ export default function CoursesAndSubjects({
       }
       setDeletingSubject(null);
     } catch (err) {
-      alert('Error deleting subject: ' + err.message);
+      setSubjectMsg({ type: 'error', text: 'Error deleting subject: ' + err.message });
     } finally {
       setIsDeletingSubject(false);
     }
@@ -544,45 +556,68 @@ export default function CoursesAndSubjects({
       </div>
 
       {/* Delete Course Modal */}
-      {deletingCourse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6 animate-fade-in text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
-              <Trash2 className="w-6 h-6" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900">Delete Course?</h3>
-            <p className="text-xs text-slate-500 mt-1 mb-5">
-              Are you sure you want to delete <span className="font-semibold text-slate-800">"{deletingCourse.name}"</span>?
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => setDeletingCourse(null)}
-                className="px-4 py-2 text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isDeletingCourse}
-                onClick={handleDeleteCourse}
-                className="px-4 py-2 text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
-              >
-                {isDeletingCourse ? 'Deleting...' : 'Yes, Delete'}
-              </button>
+      {deletingCourse && (() => {
+        const enrolledCount = (students || []).filter((s) => s.course === deletingCourse.name).length;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-course-title"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs"
+          >
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6 animate-fade-in text-center">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 id="delete-course-title" className="text-base font-bold text-slate-900">Delete Course?</h3>
+              <p className="text-xs text-slate-500 mt-1 mb-3">
+                Are you sure you want to delete <span className="font-semibold text-slate-800">"{deletingCourse.name}"</span>?
+              </p>
+
+              {enrolledCount > 0 && (
+                <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-left flex items-start gap-2 animate-fade-in">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Warning:</strong> {enrolledCount} enrolled student{enrolledCount === 1 ? '' : 's'} {enrolledCount === 1 ? 'is' : 'are'} assigned to this course. Deleting this course will leave their enrollment unassigned!
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingCourse(null)}
+                  className="px-4 py-2 text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingCourse}
+                  onClick={handleDeleteCourse}
+                  className="px-4 py-2 text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
+                >
+                  {isDeletingCourse ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Delete Subject Modal */}
       {deletingSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-subject-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs"
+        >
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6 animate-fade-in text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Delete Subject?</h3>
+            <h3 id="delete-subject-title" className="text-base font-bold text-slate-900">Delete Subject?</h3>
             <p className="text-xs text-slate-500 mt-1 mb-5">
               Are you sure you want to delete <span className="font-semibold text-slate-800">"{deletingSubject.name}"</span>?
             </p>

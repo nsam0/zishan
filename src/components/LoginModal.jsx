@@ -31,6 +31,19 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
     }
   }, []);
 
+  const [showForgotModal, setShowForgotModal] = useState(false);
+
+  // Close on Escape key if not gate mode
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !isGateMode && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isGateMode, onClose]);
+
   const handlePortalSwitch = (type) => {
     setPortalType(type);
     setError(null);
@@ -45,14 +58,14 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
     setIsLoggingIn(true);
 
     const cleanEmail = email.trim();
-    const cleanPass = password.trim();
+    // Do not trim password
+    const cleanPass = password;
 
     try {
       const result = await signIn(cleanEmail, cleanPass);
 
       const userRole = result?.profile?.role || '';
-      const userEmail = result?.user?.email || cleanEmail;
-      const isAdminUser = userEmail === 'ansari74108@gmail.com' || userRole === 'admin';
+      const isAdminUser = userRole === 'admin';
 
       // Strict portal role validation
       if (portalType === 'admin' && !isAdminUser) {
@@ -81,7 +94,12 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
   const isAdminPortal = portalType === 'admin';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="login-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in"
+    >
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Top Portal Switcher Tabs */}
@@ -89,6 +107,7 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
           <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200/70 rounded-2xl">
             <button
               type="button"
+              aria-label="Switch to Admin Login portal"
               onClick={() => handlePortalSwitch('admin')}
               className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                 isAdminPortal
@@ -102,6 +121,7 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
 
             <button
               type="button"
+              aria-label="Switch to Teacher and Staff Login portal"
               onClick={() => handlePortalSwitch('staff')}
               className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                 !isAdminPortal
@@ -127,7 +147,7 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
             >
               {isAdminPortal ? 'Admin Access Only' : 'Teacher Attendance Portal'}
             </span>
-            <h3 className="text-lg font-bold text-slate-900 leading-tight">
+            <h3 id="login-title" className="text-lg font-bold text-slate-900 leading-tight">
               {isAdminPortal ? 'Sign In to GSE Admin' : 'Teacher Portal Sign In'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -142,7 +162,7 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
               type="button"
               onClick={onClose}
               className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer self-start"
-              title="Close"
+              aria-label="Close Login Modal"
             >
               <X className="w-5 h-5" />
             </button>
@@ -160,12 +180,13 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
 
           <form onSubmit={handleLogin} className="space-y-3.5">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="login-email" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 {isAdminPortal ? 'Admin Official Email' : 'Teacher Email'}
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                 <input
+                  id="login-email"
                   type="email"
                   required
                   value={email}
@@ -177,12 +198,22 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="login-password" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div className="relative">
                 <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
@@ -194,7 +225,7 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  title={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -220,6 +251,26 @@ export default function LoginModal({ isOpen, onClose, isGateMode = false }) {
               </span>
             </button>
           </form>
+
+          {/* Password Recovery Info Modal / Banner */}
+          {showForgotModal && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 animate-fade-in space-y-1.5">
+              <div className="flex items-center justify-between font-bold">
+                <span>Account Recovery</span>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="text-blue-500 hover:text-blue-800 cursor-pointer"
+                  aria-label="Dismiss recovery message"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11px] text-blue-800 leading-relaxed">
+                For security reasons, password resets must be issued by the Institute Administrator via the Staff Management portal or requested via your verified administrator.
+              </p>
+            </div>
+          )}
 
           {isGateMode && (
             <div className="pt-2 text-center border-t border-slate-100">

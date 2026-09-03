@@ -1,18 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Read configuration from Vite environment variables with fallback
-export const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL || 'https://vznyiuhotopctbssnpjn.supabase.co';
-export const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6bnlpdWhvdG9wY3Ric3NucGpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyOTMyMjQsImV4cCI6MjEwMjg2OTIyNH0.Fs-AwPDYBNkhnvHSxcKmqci6lqLxKAXiyPYNkiOE14A';
+// Read configuration strictly from Vite environment variables (no hardcoded fallbacks)
+export const SUPABASE_URL = (import.meta?.env?.VITE_SUPABASE_URL || '').trim();
+export const SUPABASE_ANON_KEY = (import.meta?.env?.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 function createSafeSupabaseClient() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!isSupabaseConfigured) {
     console.warn(
-      '[Security Warning] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not defined. Please verify your environment settings.'
+      '[Configuration Notice] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables. The application will fail closed.'
     );
     return null;
   }
@@ -156,7 +153,12 @@ CREATE OR REPLACE VIEW public.staff_students_view WITH (security_invoker = false
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
 REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM anon;
 GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT SELECT ON public.staff_students_view TO authenticated;
+
+-- Idempotent view privileges for staff_students_view (preserves postgres/service_role)
+REVOKE ALL ON TABLE public.staff_students_view FROM anon;
+REVOKE ALL ON TABLE public.staff_students_view FROM authenticated;
+GRANT SELECT ON TABLE public.staff_students_view TO authenticated;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles, public.staff_subject_assignments, public.students, public.courses, public.subjects, public.attendance_records, public.leaderboard_scores TO authenticated;
 
 -- Policies
@@ -191,7 +193,7 @@ BEGIN
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'attendance_staff')
+    'attendance_staff' -- Strict least-privilege: user metadata can NEVER assign admin role
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email;
@@ -334,15 +336,17 @@ GRANT EXECUTE ON FUNCTION public.admin_delete_staff_user(uuid) TO authenticated;
  * - Staff read from public.staff_students_view (excludes father_name).
  */
 export async function fetchStudentsFromDB(role = 'admin') {
+  if (!supabase) return { data: [], error: 'Database client not configured' };
   try {
-    // Both admin and staff query public.students directly
+    // Admin reads from public.students (includes father_name), Staff reads strictly from public.staff_students_view (excludes father_name)
+    const table = role === 'admin' ? 'students' : 'staff_students_view';
     const { data, error } = await supabase
-      .from('students')
+      .from(table)
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching students:', error.message);
+      console.error(`Error fetching students from ${table}:`, error.message);
       return { data: [], error: error.message };
     }
 
@@ -537,28 +541,7 @@ export async function deleteSubjectFromDB(id) {
 export async function fetchStaffUsersFromDB() {
   if (!supabase) return { data: [], error: null };
   try {
-    // 1. Check staff_users table first
-    const { data: staffData, error: sError } = await supabase
-      .from('staff_users')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!sError && staffData && staffData.length > 0) {
-      return {
-        data: staffData.map((s) => ({
-          id: s.id,
-          name: s.name,
-          email: s.email,
-          username: s.username || s.email,
-          role: s.role || 'attendance_staff',
-          assigned_subjects: Array.isArray(s.assigned_subjects) ? s.assigned_subjects : [],
-          created_at: s.created_at
-        })),
-        error: null
-      };
-    }
-
-    // 2. Fallback to profiles table
+    // Read strictly from public.profiles and public.staff_subject_assignments (no staff_users dependency)
     const { data: profiles, error: pError } = await supabase
       .from('profiles')
       .select('id, email, full_name, role, created_at')
@@ -569,25 +552,31 @@ export async function fetchStaffUsersFromDB() {
       return { data: [], error: pError.message };
     }
 
-    const { data: assignments } = await supabase
+    const { data: assignments, error: aError } = await supabase
       .from('staff_subject_assignments')
       .select('staff_id, subject_name');
 
-    const staffList = (profiles || []).map((prof) => {
-      const userAssignments = (assignments || [])
-        .filter((a) => a.staff_id === prof.id)
-        .map((a) => a.subject_name);
+    if (aError) {
+      console.warn('Could not fetch staff subject assignments:', aError.message);
+    }
 
-      return {
-        id: prof.id,
-        name: prof.full_name,
-        email: prof.email,
-        username: prof.email,
-        role: prof.role,
-        assigned_subjects: userAssignments,
-        created_at: prof.created_at
-      };
+    const assignmentMap = {};
+    (assignments || []).forEach((a) => {
+      if (!assignmentMap[a.staff_id]) {
+        assignmentMap[a.staff_id] = [];
+      }
+      assignmentMap[a.staff_id].push(a.subject_name);
     });
+
+    const staffList = (profiles || []).map((prof) => ({
+      id: prof.id,
+      name: prof.full_name || prof.email,
+      email: prof.email,
+      username: prof.email,
+      role: prof.role,
+      assigned_subjects: assignmentMap[prof.id] || [],
+      created_at: prof.created_at
+    }));
 
     return { data: staffList, error: null };
   } catch (err) {
@@ -596,24 +585,43 @@ export async function fetchStaffUsersFromDB() {
 }
 
 /**
- * Assign subjects to a staff profile
+ * Assign subjects to a staff profile via public.staff_subject_assignments
  */
 export async function assignStaffSubjectsInDB(staffId, subjectNames = []) {
-  if (!supabase) return { success: true };
+  if (!supabase) return { success: false, error: 'Database client not configured' };
   try {
-    await supabase
-      .from('staff_users')
-      .update({ assigned_subjects: subjectNames })
-      .eq('id', staffId);
+    // Remove existing assignments for this staff
+    const { error: delErr } = await supabase
+      .from('staff_subject_assignments')
+      .delete()
+      .eq('staff_id', staffId);
+
+    if (delErr) throw delErr;
+
+    // Insert updated subject assignments
+    if (Array.isArray(subjectNames) && subjectNames.length > 0) {
+      const rows = subjectNames.map((subj) => ({
+        staff_id: staffId,
+        subject_name: subj
+      }));
+
+      const { error: insErr } = await supabase
+        .from('staff_subject_assignments')
+        .insert(rows);
+
+      if (insErr) throw insErr;
+    }
 
     return { success: true, error: null };
   } catch (err) {
+    console.error('assignStaffSubjectsInDB error:', err);
     return { success: false, error: err.message };
   }
 }
 
 /**
  * Create or update a staff/teacher user with official email, password, and assigned subjects.
+ * Never trims passwords to preserve intentional whitespace.
  */
 export async function createStaffUserInDB({ name, email, password, assigned_subjects = [] }) {
   if (!supabase) {
@@ -622,42 +630,41 @@ export async function createStaffUserInDB({ name, email, password, assigned_subj
 
   const cleanEmail = email.trim().toLowerCase();
   const cleanName = name.trim();
-  const cleanPassword = password.trim();
+  // Passwords MUST NOT be trimmed
+  const exactPassword = password;
 
   try {
-    // 1. Call the native create_staff_user RPC that exists in Supabase
-    const { data: rpcData, error: rpcError } = await supabase.rpc('create_staff_user', {
+    let newUserId = null;
+
+    // 1. Try secure admin_create_staff_user RPC
+    const { data: rpcData, error: rpcError } = await supabase.rpc('admin_create_staff_user', {
       staff_email: cleanEmail,
+      staff_password: exactPassword,
       staff_name: cleanName,
-      staff_password: cleanPassword,
-      staff_role: 'attendance_staff',
-      staff_username: cleanEmail
+      assigned_subjects: assigned_subjects
     });
 
-    let newUserId = rpcData?.user_id || rpcData?.id;
-
-    if (rpcError) {
-      console.warn('create_staff_user RPC error, trying fallback:', rpcError.message);
-      // Fallback to admin_create_staff_user if available
-      const { data: altData, error: altError } = await supabase.rpc('admin_create_staff_user', {
+    if (!rpcError && rpcData) {
+      newUserId = rpcData?.user_id || rpcData?.id;
+    } else {
+      // Fallback: try create_staff_user RPC
+      const { data: altData, error: altError } = await supabase.rpc('create_staff_user', {
         staff_email: cleanEmail,
-        staff_password: cleanPassword,
         staff_name: cleanName,
-        assigned_subjects: assigned_subjects
+        staff_password: exactPassword,
+        staff_role: 'attendance_staff',
+        staff_username: cleanEmail
       });
 
       if (altError) {
-        throw new Error(altError.message || rpcError.message);
+        throw new Error(altError.message || rpcError?.message || 'Failed to create staff user');
       }
       newUserId = altData?.user_id || altData?.id;
     }
 
-    // 2. Save assigned subjects in staff_users table
-    if (newUserId) {
-      await supabase
-        .from('staff_users')
-        .update({ assigned_subjects: assigned_subjects })
-        .eq('id', newUserId);
+    // 2. Ensure assignments in public.staff_subject_assignments
+    if (newUserId && Array.isArray(assigned_subjects) && assigned_subjects.length > 0) {
+      await assignStaffSubjectsInDB(newUserId, assigned_subjects);
     }
 
     return {
@@ -677,13 +684,21 @@ export async function createStaffUserInDB({ name, email, password, assigned_subj
 }
 
 /**
- * Delete a staff profile and its auth user cleanly
+ * Delete a staff profile and its auth user cleanly via secure admin RPC or profile deletion
  */
 export async function deleteStaffUserFromDB(id) {
   if (!supabase) return { success: false, error: 'Supabase not initialized' };
   try {
-    await supabase.from('staff_users').delete().eq('id', id);
-    await supabase.from('profiles').delete().eq('id', id);
+    // 1. Attempt admin_delete_staff_user RPC
+    const { error: rpcErr } = await supabase.rpc('admin_delete_staff_user', { target_user_id: id });
+    if (!rpcErr) {
+      return { success: true, error: null };
+    }
+
+    // 2. Fallback: delete from profiles (which cascades to staff_subject_assignments)
+    const { error: delErr } = await supabase.from('profiles').delete().eq('id', id);
+    if (delErr) throw delErr;
+
     return { success: true, error: null };
   } catch (err) {
     return { success: false, error: err.message };
@@ -749,24 +764,16 @@ export async function fetchAttendanceRangeFromDB(startDate, endDate, course, sub
 }
 
 export async function saveAttendanceToDB(records) {
-  if (!records || records.length === 0) return { success: true };
+  if (!records || records.length === 0) return { success: true, data: [] };
+  if (!supabase) return { success: false, error: 'Database client not configured' };
 
   try {
-    const date = records[0].date;
-    const subject = records[0].subject;
-    const studentIds = records.map((r) => r.student_id);
-
-    // Safely delete existing attendance records for these students on this date and subject
-    await supabase
-      .from('attendance_records')
-      .delete()
-      .eq('date', date)
-      .eq('subject', subject)
-      .in('student_id', studentIds);
-
+    // Atomic upsert on (date, student_id, subject) prevents race conditions and duplicates
     const { data, error } = await supabase
       .from('attendance_records')
-      .insert(records)
+      .upsert(records, {
+        onConflict: 'date,student_id,subject'
+      })
       .select();
 
     if (error) {
@@ -880,10 +887,28 @@ export function computeLeaderboardScores(students = [], attendanceRecords = []) 
   });
 
   scores.sort((a, b) => {
+    // 1. Total score
     if (b.total_score !== a.total_score) {
       return b.total_score - a.total_score;
     }
-    return b.attendance_percentage - a.attendance_percentage;
+    // 2. Attendance percentage
+    if (b.attendance_percentage !== a.attendance_percentage) {
+      return b.attendance_percentage - a.attendance_percentage;
+    }
+    // 3. Punctuality percentage
+    if (b.punctuality_percentage !== a.punctuality_percentage) {
+      return b.punctuality_percentage - a.punctuality_percentage;
+    }
+    // 4. Grooming percentage
+    if (b.grooming_percentage !== a.grooming_percentage) {
+      return b.grooming_percentage - a.grooming_percentage;
+    }
+    // 5. Deterministic tie-breakers: Roll number, then Student Name, then Student ID
+    const rollDiff = (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true });
+    if (rollDiff !== 0) return rollDiff;
+    const nameDiff = (a.student_name || '').localeCompare(b.student_name || '');
+    if (nameDiff !== 0) return nameDiff;
+    return (a.student_id || '').localeCompare(b.student_id || '');
   });
 
   scores.forEach((item, index) => {

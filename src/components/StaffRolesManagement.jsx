@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield,
   UserPlus,
@@ -38,6 +38,17 @@ export default function StaffRolesManagement({
   const [deletingUser, setDeletingUser] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Close delete modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && deletingUser) {
+        setDeletingUser(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deletingUser]);
+
   const handleToggleSubject = (subName) => {
     setSelectedSubjects((prev) =>
       prev.includes(subName)
@@ -58,7 +69,8 @@ export default function StaffRolesManagement({
     e.preventDefault();
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
+    // Do NOT trim password
+    const exactPassword = password;
 
     if (!cleanName || !cleanEmail) {
       setMessage({ type: 'error', text: 'Full Name and Official Email are required!' });
@@ -70,7 +82,7 @@ export default function StaffRolesManagement({
       return;
     }
 
-    if (!cleanPassword || cleanPassword.length < 6) {
+    if (!exactPassword || exactPassword.length < 6) {
       setMessage({ type: 'error', text: 'Password must be at least 6 characters long!' });
       return;
     }
@@ -90,7 +102,7 @@ export default function StaffRolesManagement({
       const res = await createStaffUserInDB({
         name: cleanName,
         email: cleanEmail,
-        password: cleanPassword,
+        password: exactPassword,
         assigned_subjects: selectedSubjects
       });
 
@@ -537,12 +549,17 @@ export default function StaffRolesManagement({
 
       {/* Delete Confirmation Modal */}
       {deletingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-staff-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs"
+        >
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6 animate-fade-in text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Revoke Staff Permissions?</h3>
+            <h3 id="delete-staff-title" className="text-base font-bold text-slate-900">Revoke Staff Permissions?</h3>
             <p className="text-xs text-slate-500 mt-1 mb-5">
               Are you sure you want to remove permissions for <span className="font-semibold text-slate-800">"{deletingUser.name}"</span>?
             </p>

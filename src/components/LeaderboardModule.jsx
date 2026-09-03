@@ -24,7 +24,7 @@ import {
   computeLeaderboardScores,
   syncLeaderboardToDB
 } from '../lib/supabase';
-import { sanitizeCsvCell } from '../lib/security';
+import { sanitizeCsvCell, getLocalDateString } from '../lib/security';
 
 export default function LeaderboardModule({ students = [], courses = [], currentUser }) {
   const [leaderboardData, setLeaderboardData] = useState([]);
@@ -102,7 +102,7 @@ export default function LeaderboardModule({ students = [], courses = [], current
   // Download CSV Leaderboard Report
   const handleDownloadCSV = () => {
     if (filteredLeaderboard.length === 0) {
-      alert('No leaderboard data to download.');
+      setSyncMessage({ type: 'error', text: 'No leaderboard data to download for the selected filter.' });
       return;
     }
 
@@ -149,7 +149,7 @@ export default function LeaderboardModule({ students = [], courses = [], current
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `student_leaderboard_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `student_leaderboard_${getLocalDateString()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
   const [assignedSubjects, setAssignedSubjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch verified profile and staff subject assignments
+  // Fetch verified profile and staff subject assignments strictly from profiles table
   const loadUserProfile = useCallback(async (userId, userEmail = '') => {
     if (!userId || !supabase) {
       setProfile(null);
@@ -19,57 +19,51 @@ export function AuthProvider({ children }) {
     }
 
     const normalizedEmail = (userEmail || '').trim().toLowerCase();
-    const isPrimaryAdmin = normalizedEmail === 'ansari74108@gmail.com';
 
-    // 1. Instant resolution for Head Admin
-    if (isPrimaryAdmin) {
-      const adminProfile = {
-        id: userId,
-        role: 'admin',
-        full_name: 'Head Admin',
-        email: 'ansari74108@gmail.com'
-      };
-      setProfile(adminProfile);
-      setAssignedSubjects([]);
-      return adminProfile;
-    }
-
-    // 2. Resolution for Teacher / Staff from public.staff_users
     try {
-      const { data: staffData } = await supabase
-        .from('staff_users')
-        .select('id, name, email, role, assigned_subjects')
+      // 1. Fetch user's protected profile from public.profiles
+      const { data: prof, error: profErr } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role')
         .eq('id', userId)
         .maybeSingle();
 
-      if (staffData) {
-        const staffProfile = {
-          id: staffData.id,
-          role: staffData.role || 'attendance_staff',
-          full_name: staffData.name || staffData.email,
-          email: staffData.email
-        };
-        setProfile(staffProfile);
-        setAssignedSubjects(Array.isArray(staffData.assigned_subjects) ? staffData.assigned_subjects : []);
-        return staffProfile;
+      if (profErr) {
+        console.warn('Error loading user profile:', profErr.message);
       }
 
-      // Fallback staff profile
-      const fallback = {
+      const activeProfile = prof || {
         id: userId,
         role: 'attendance_staff',
-        full_name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Teacher',
+        full_name: normalizedEmail ? normalizedEmail.split('@')[0] : 'User',
         email: normalizedEmail
       };
-      setProfile(fallback);
-      setAssignedSubjects([]);
-      return fallback;
+
+      setProfile(activeProfile);
+
+      // 2. If staff role, load subject assignments from public.staff_subject_assignments
+      if (activeProfile.role === 'attendance_staff') {
+        const { data: assignments, error: aErr } = await supabase
+          .from('staff_subject_assignments')
+          .select('subject_name')
+          .eq('staff_id', userId);
+
+        if (!aErr && assignments) {
+          setAssignedSubjects(assignments.map((a) => a.subject_name));
+        } else {
+          setAssignedSubjects([]);
+        }
+      } else {
+        setAssignedSubjects([]);
+      }
+
+      return activeProfile;
     } catch (err) {
       console.error('loadUserProfile error:', err);
       const fallback = {
         id: userId,
         role: 'attendance_staff',
-        full_name: 'Teacher',
+        full_name: normalizedEmail ? normalizedEmail.split('@')[0] : 'User',
         email: normalizedEmail
       };
       setProfile(fallback);
@@ -111,7 +105,7 @@ export function AuthProvider({ children }) {
 
     initAuth();
 
-    // Subscribe to auth state changes (strictly non-blocking to prevent navigator.locks deadlocks)
+    // Subscribe to auth state changes
     const { data: { subscription } = {} } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
         if (!mounted) return;
@@ -121,7 +115,6 @@ export function AuthProvider({ children }) {
         setIsLoading(false);
 
         if (currentSession?.user) {
-          // Defer loadUserProfile to next tick so auth storage lock is released
           setTimeout(() => {
             if (mounted) {
               loadUserProfile(currentSession.user.id, currentSession.user.email);
@@ -140,46 +133,33 @@ export function AuthProvider({ children }) {
     };
   }, [loadUserProfile]);
 
-  // Sign In using Supabase Auth
+  // Sign In using Supabase Auth (Never trims passwords)
   const signIn = async (email, password) => {
     if (!supabase) {
-      throw new Error('Supabase client is not initialized. Please verify your environment configuration.');
+      throw new Error('Supabase client is not configured. Please check your environment configuration.');
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
+    // NEVER trim passwords - passwords may intentionally include leading or trailing spaces
+    const exactPassword = password;
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: cleanEmail,
-      password: cleanPassword
+      password: exactPassword
     });
 
     if (error) {
       throw error;
     }
 
+    let loadedProfile = null;
     if (data?.user) {
       setUser(data.user);
       setSession(data.session);
+      loadedProfile = await loadUserProfile(data.user.id, data.user.email);
     }
 
-    // Immediate profile shape
-    const isPrimaryAdmin = cleanEmail === 'ansari74108@gmail.com';
-    const initialProf = {
-      id: data?.user?.id,
-      role: isPrimaryAdmin ? 'admin' : 'attendance_staff',
-      full_name: isPrimaryAdmin ? 'Head Admin' : cleanEmail.split('@')[0],
-      email: cleanEmail
-    };
-
-    // Trigger full profile load asynchronously
-    if (data?.user) {
-      setTimeout(() => {
-        loadUserProfile(data.user.id, data.user.email);
-      }, 0);
-    }
-
-    return { ...data, profile: initialProf };
+    return { ...data, profile: loadedProfile };
   };
 
   // Sign Out cleanly

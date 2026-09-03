@@ -11,6 +11,7 @@ import LoginModal from './components/LoginModal';
 import SqlSetupModal from './components/SqlSetupModal';
 import { useAuth } from './context/AuthContext';
 import {
+  isSupabaseConfigured,
   fetchStudentsFromDB,
   fetchCoursesFromDB,
   fetchSubjectsFromDB,
@@ -54,7 +55,7 @@ export default function App() {
 
   // Load verified data from Supabase
   const loadData = useCallback(async () => {
-    if (!session) return;
+    if (!session || !user) return;
 
     setIsLoading(true);
     try {
@@ -84,13 +85,21 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [session, isAdmin]);
+  }, [session, user?.id, isAdmin]);
 
+  // Session Isolation: Clear all data immediately when user changes
   useEffect(() => {
-    if (session) {
+    setStudents([]);
+    setCourses([]);
+    setSubjects([]);
+    setStaffUsers([]);
+
+    if (session && user) {
       loadData();
+    } else {
+      setIsLoading(false);
     }
-  }, [session, loadData]);
+  }, [session, user?.id, isAdmin, loadData]);
 
   // Student Actions
   const handleStudentAdded = (newStudent) => {
@@ -133,6 +142,26 @@ export default function App() {
   const handleStaffDeleted = (deletedId) => {
     setStaffUsers((prev) => prev.filter((s) => s.id !== deletedId));
   };
+
+  // 0. Fail closed with clear setup guidance if environment variables are missing
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-6 rounded-2xl shadow-xl border border-rose-200 text-center">
+          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">Database Setup Required</h2>
+          <p className="text-xs text-slate-600 mt-2">
+            The application has failed closed because the required environment variables (<code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-mono">VITE_SUPABASE_URL</code> and <code className="bg-slate-100 px-1 py-0.5 rounded text-rose-600 font-mono">VITE_SUPABASE_ANON_KEY</code>) are missing.
+          </p>
+          <p className="text-xs text-slate-500 mt-3">
+            Please configure your <code className="font-mono">.env</code> file or deployment settings in Vercel to connect to Supabase.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Loading screen while checking auth session
   if (authLoading) {

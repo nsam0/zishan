@@ -29,9 +29,17 @@ export function isValidEmail(email) {
 }
 
 /**
- * Sanitizes generic user input text
+ * Returns YYYY-MM-DD in local device timezone (prevents UTC day shifts)
  */
-export function sanitizeInput(text, maxLength = 255) {
-  if (typeof text !== 'string') return '';
-  return text.trim().slice(0, maxLength);
+export function getLocalDateString(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
+

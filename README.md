@@ -56,22 +56,20 @@ CREATE POLICY "Allow admin to manage students" ON public.students
     FOR ALL
     TO authenticated
     USING (
-      auth.jwt() ->> 'email' = 'ansari74108@gmail.com'
-      OR EXISTS (
-        SELECT 1 FROM public.staff_users
-        WHERE staff_users.id = auth.uid() AND staff_users.role = 'admin'
+      EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
       )
     )
     WITH CHECK (
-      auth.jwt() ->> 'email' = 'ansari74108@gmail.com'
-      OR EXISTS (
-        SELECT 1 FROM public.staff_users
-        WHERE staff_users.id = auth.uid() AND staff_users.role = 'admin'
+      EXISTS (
+        SELECT 1 FROM public.profiles 
+        WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
       )
     );
 ```
 
-> **Note:** The app features automatic offline & local storage fallback. Even if the Supabase table has not been created yet, you can add, edit, search, and delete students locally without any error! Once you run the SQL script in Supabase, click "Test Connection" inside the app to sync.
+> **Note:** For the complete production database schema, RLS policies, views, and helper functions, execute the full idempotent script located in **[`supabase-setup.sql`](./supabase-setup.sql)**.
 
 ---
 

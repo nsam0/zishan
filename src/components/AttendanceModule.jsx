@@ -25,7 +25,7 @@ import {
   fetchAttendanceRangeFromDB,
   saveAttendanceToDB
 } from '../lib/supabase';
-import { sanitizeCsvCell } from '../lib/security';
+import { sanitizeCsvCell, getLocalDateString } from '../lib/security';
 
 export default function AttendanceModule({
   students,
@@ -33,7 +33,7 @@ export default function AttendanceModule({
   subjects = [],
   currentUser
 }) {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedCourse, setSelectedCourse] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,7 +106,7 @@ export default function AttendanceModule({
   const [exportStartDate, setExportStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   });
   const [exportEndDate, setExportEndDate] = useState(todayStr);
   const [exportSubject, setExportSubject] = useState('ALL');
@@ -120,6 +120,9 @@ export default function AttendanceModule({
       setIsLoading(true);
       try {
         const res = await fetchAttendanceForDateFromDB(selectedDate, selectedCourse, selectedSubject);
+        if (res.error && isMounted) {
+          setMessage({ type: 'error', text: `Database Error: ${res.error}` });
+        }
         if (isMounted) {
           const map = {};
           (res.data || []).forEach((rec) => {
@@ -139,6 +142,9 @@ export default function AttendanceModule({
         }
       } catch (err) {
         console.error('Error loading attendance', err);
+        if (isMounted) {
+          setMessage({ type: 'error', text: `Failed to load attendance: ${err.message}` });
+        }
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -470,6 +476,8 @@ export default function AttendanceModule({
           {/* Date Picker */}
           <div className="relative">
             <input
+              id="attendance-date"
+              aria-label="Select Attendance Date"
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
@@ -613,6 +621,8 @@ export default function AttendanceModule({
           <div className="relative flex-1 min-w-[160px]">
             <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
             <input
+              id="attendance-search"
+              aria-label="Search student by name or roll number"
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -624,6 +634,8 @@ export default function AttendanceModule({
           {/* Course filter */}
           <div className="relative">
             <select
+              id="attendance-course-filter"
+              aria-label="Filter students by course"
               value={selectedCourse}
               onChange={(e) => setSelectedCourse(e.target.value)}
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-hidden focus:border-blue-500 cursor-pointer"
@@ -719,7 +731,7 @@ export default function AttendanceModule({
                             <div className="font-semibold text-slate-900 text-sm">
                               {student.name}
                             </div>
-                            {student.father_name && (
+                            {isAdmin && student.father_name && (
                               <div className="text-[11px] text-slate-400">
                                 Father/Guardian: {student.father_name}
                               </div>

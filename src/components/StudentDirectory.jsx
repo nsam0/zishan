@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   RefreshCw,
@@ -37,6 +37,18 @@ export default function StudentDirectory({
   // Delete Confirmation State
   const [deletingStudent, setDeletingStudent] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (editingStudent) setEditingStudent(null);
+        if (deletingStudent) setDeletingStudent(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingStudent, deletingStudent]);
 
   // Merge courses from DB and any courses that might already be in student records
   const allCourseNames = Array.from(
@@ -319,14 +331,20 @@ export default function StudentDirectory({
 
       {/* Edit Student Modal */}
       {editingStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-student-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs"
+        >
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 p-6 animate-fade-in">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900">Edit Student Record</h3>
+              <h3 id="edit-student-title" className="text-lg font-bold text-slate-900">Edit Student Record</h3>
               <button
                 type="button"
                 onClick={() => setEditingStudent(null)}
                 className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                aria-label="Close edit student modal"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -334,10 +352,11 @@ export default function StudentDirectory({
 
             <form onSubmit={handleEditSubmit} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                <label htmlFor="edit-student-name" className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                   Student Name *
                 </label>
                 <input
+                  id="edit-student-name"
                   type="text"
                   required
                   value={editFormData.name}
@@ -347,10 +366,11 @@ export default function StudentDirectory({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                <label htmlFor="edit-student-father" className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                   Parent / Guardian Name
                 </label>
                 <input
+                  id="edit-student-father"
                   type="text"
                   value={editFormData.father_name}
                   onChange={(e) => setEditFormData({ ...editFormData, father_name: e.target.value })}
@@ -359,10 +379,11 @@ export default function StudentDirectory({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                <label htmlFor="edit-student-roll" className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                   Roll Number
                 </label>
                 <input
+                  id="edit-student-roll"
                   type="text"
                   value={editFormData.roll_number}
                   onChange={(e) => setEditFormData({ ...editFormData, roll_number: e.target.value })}
@@ -371,10 +392,11 @@ export default function StudentDirectory({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                <label htmlFor="edit-student-course" className="block text-xs font-semibold text-slate-700 uppercase mb-1">
                   Course
                 </label>
                 <select
+                  id="edit-student-course"
                   value={editFormData.course}
                   onChange={(e) => setEditFormData({ ...editFormData, course: e.target.value })}
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer bg-white"
@@ -411,12 +433,17 @@ export default function StudentDirectory({
 
       {/* Delete Confirmation Modal */}
       {deletingStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-student-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs"
+        >
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 p-6 animate-fade-in text-center">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Delete Student?</h3>
+            <h3 id="delete-student-dialog-title" className="text-base font-bold text-slate-900">Delete Student?</h3>
             <p className="text-xs text-slate-500 mt-1 mb-5">
               Are you sure you want to delete <span className="font-semibold text-slate-800">"{deletingStudent.name}"</span>? This action cannot be undone.
             </p>
