@@ -118,9 +118,8 @@ export default function AttendanceModule({
     let isMounted = true;
     async function loadDateAttendance() {
       setIsLoading(true);
-      setMessage(null);
       try {
-        const res = await fetchAttendanceFromDB(selectedDate, selectedCourse, selectedSubject);
+        const res = await fetchAttendanceForDateFromDB(selectedDate, selectedCourse, selectedSubject);
         if (isMounted) {
           const map = {};
           (res.data || []).forEach((rec) => {

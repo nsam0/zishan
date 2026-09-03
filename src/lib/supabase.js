@@ -718,6 +718,9 @@ export async function fetchAttendanceForDateFromDB(date, course, subject) {
   }
 }
 
+// Alias for backwards compatibility
+export const fetchAttendanceFromDB = fetchAttendanceForDateFromDB;
+
 export async function fetchAttendanceRangeFromDB(startDate, endDate, course, subject) {
   try {
     let query = supabase
