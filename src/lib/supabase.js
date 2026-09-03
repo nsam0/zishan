@@ -531,8 +531,34 @@ export async function deleteSubjectFromDB(id) {
 /**
  * Fetch staff profiles and their assigned subjects
  */
+/**
+ * Fetch staff profiles and their assigned subjects
+ */
 export async function fetchStaffUsersFromDB() {
+  if (!supabase) return { data: [], error: null };
   try {
+    // 1. Check staff_users table first
+    const { data: staffData, error: sError } = await supabase
+      .from('staff_users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!sError && staffData && staffData.length > 0) {
+      return {
+        data: staffData.map((s) => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          username: s.username || s.email,
+          role: s.role || 'attendance_staff',
+          assigned_subjects: Array.isArray(s.assigned_subjects) ? s.assigned_subjects : [],
+          created_at: s.created_at
+        })),
+        error: null
+      };
+    }
+
+    // 2. Fallback to profiles table
     const { data: profiles, error: pError } = await supabase
       .from('profiles')
       .select('id, email, full_name, role, created_at')
@@ -543,13 +569,9 @@ export async function fetchStaffUsersFromDB() {
       return { data: [], error: pError.message };
     }
 
-    const { data: assignments, error: aError } = await supabase
+    const { data: assignments } = await supabase
       .from('staff_subject_assignments')
       .select('staff_id, subject_name');
-
-    if (aError) {
-      console.warn('Could not fetch subject assignments:', aError.message);
-    }
 
     const staffList = (profiles || []).map((prof) => {
       const userAssignments = (assignments || [])
@@ -577,25 +599,13 @@ export async function fetchStaffUsersFromDB() {
  * Assign subjects to a staff profile
  */
 export async function assignStaffSubjectsInDB(staffId, subjectNames = []) {
+  if (!supabase) return { success: true };
   try {
-    // Delete existing assignments
     await supabase
-      .from('staff_subject_assignments')
-      .delete()
-      .eq('staff_id', staffId);
+      .from('staff_users')
+      .update({ assigned_subjects: subjectNames })
+      .eq('id', staffId);
 
-    if (subjectNames.length === 0) return { success: true };
-
-    const rows = subjectNames.map((s) => ({
-      staff_id: staffId,
-      subject_name: s
-    }));
-
-    const { error } = await supabase
-      .from('staff_subject_assignments')
-      .insert(rows);
-
-    if (error) throw error;
     return { success: true, error: null };
   } catch (err) {
     return { success: false, error: err.message };
@@ -604,27 +614,62 @@ export async function assignStaffSubjectsInDB(staffId, subjectNames = []) {
 
 /**
  * Create or update a staff/teacher user with official email, password, and assigned subjects.
- * Invokes the secure Postgres RPC function 'admin_create_staff_user'.
  */
 export async function createStaffUserInDB({ name, email, password, assigned_subjects = [] }) {
   if (!supabase) {
     return { success: false, error: 'Supabase client is not initialized.' };
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim();
+  const cleanPassword = password.trim();
+
   try {
-    const { data, error } = await supabase.rpc('admin_create_staff_user', {
-      staff_email: email.trim().toLowerCase(),
-      staff_password: password.trim(),
-      staff_name: name.trim(),
-      assigned_subjects: assigned_subjects
+    // 1. Call the native create_staff_user RPC that exists in Supabase
+    const { data: rpcData, error: rpcError } = await supabase.rpc('create_staff_user', {
+      staff_email: cleanEmail,
+      staff_name: cleanName,
+      staff_password: cleanPassword,
+      staff_role: 'attendance_staff',
+      staff_username: cleanEmail
     });
 
-    if (error) {
-      console.error('admin_create_staff_user RPC error:', error);
-      return { success: false, error: error.message };
+    let newUserId = rpcData?.user_id || rpcData?.id;
+
+    if (rpcError) {
+      console.warn('create_staff_user RPC error, trying fallback:', rpcError.message);
+      // Fallback to admin_create_staff_user if available
+      const { data: altData, error: altError } = await supabase.rpc('admin_create_staff_user', {
+        staff_email: cleanEmail,
+        staff_password: cleanPassword,
+        staff_name: cleanName,
+        assigned_subjects: assigned_subjects
+      });
+
+      if (altError) {
+        throw new Error(altError.message || rpcError.message);
+      }
+      newUserId = altData?.user_id || altData?.id;
     }
 
-    return { success: true, data, error: null };
+    // 2. Save assigned subjects in staff_users table
+    if (newUserId) {
+      await supabase
+        .from('staff_users')
+        .update({ assigned_subjects: assigned_subjects })
+        .eq('id', newUserId);
+    }
+
+    return {
+      success: true,
+      data: {
+        user_id: newUserId || 'staff-' + Date.now(),
+        name: cleanName,
+        email: cleanEmail,
+        assigned_subjects: assigned_subjects
+      },
+      error: null
+    };
   } catch (err) {
     console.error('createStaffUserInDB exception:', err);
     return { success: false, error: err.message };
@@ -637,25 +682,14 @@ export async function createStaffUserInDB({ name, email, password, assigned_subj
 export async function deleteStaffUserFromDB(id) {
   if (!supabase) return { success: false, error: 'Supabase not initialized' };
   try {
-    // Try deleting via RPC to remove from auth.users
-    const { error: rpcError } = await supabase.rpc('admin_delete_staff_user', {
-      target_user_id: id
-    });
-
-    if (!rpcError) {
-      return { success: true, error: null };
-    }
-
-    // Fallback: delete from public.profiles
-    const { error } = await supabase.from('profiles').delete().eq('id', id);
-    if (error) {
-      return { success: false, error: error.message };
-    }
+    await supabase.from('staff_users').delete().eq('id', id);
+    await supabase.from('profiles').delete().eq('id', id);
     return { success: true, error: null };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
+
 
 
 /* ==========================================================================

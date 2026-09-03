@@ -19,7 +19,26 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      // 1. Fetch profile from public.profiles
+      // 1. Check if user is in staff_users table
+      const { data: staffData } = await supabase
+        .from('staff_users')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (staffData && userEmail !== 'ansari74108@gmail.com') {
+        const staffProfile = {
+          id: staffData.id,
+          role: staffData.role || 'attendance_staff',
+          full_name: staffData.name || staffData.email,
+          email: staffData.email
+        };
+        setProfile(staffProfile);
+        setAssignedSubjects(Array.isArray(staffData.assigned_subjects) ? staffData.assigned_subjects : []);
+        return staffProfile;
+      }
+
+      // 2. Fetch profile from public.profiles
       const { data: prof, error: profError } = await supabase
         .from('profiles')
         .select('*')
