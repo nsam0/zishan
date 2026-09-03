@@ -177,13 +177,14 @@ export function AuthProvider({ children }) {
       throw error;
     }
 
+    let loadedProfile = null;
     if (data?.user) {
       setUser(data.user);
       setSession(data.session);
-      await loadUserProfile(data.user.id, data.user.email);
+      loadedProfile = await loadUserProfile(data.user.id, data.user.email);
     }
 
-    return data;
+    return { ...data, profile: loadedProfile };
   };
 
   // Sign Out cleanly

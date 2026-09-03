@@ -52,20 +52,16 @@ export default function Sidebar({
         } p-4 sm:p-5 flex flex-col justify-between shrink-0`}
       >
         <div>
-          {/* Menu Title and Role Indicator */}
+          {/* Menu Title */}
           <div className="flex items-center justify-between px-3 mb-3">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
               MENU
             </span>
-            <span
-              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                isAdmin
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-purple-100 text-purple-800'
-              }`}
-            >
-              {isAdmin ? 'ADMIN' : 'STAFF ONLY'}
-            </span>
+            {isAdmin && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                ADMIN
+              </span>
+            )}
           </div>
 
           <nav className="space-y-1.5">
@@ -95,18 +91,6 @@ export default function Sidebar({
               );
             })}
           </nav>
-
-          {!isAdmin && (
-            <div className="mt-5 p-3 rounded-xl bg-purple-50/70 border border-purple-100 text-[11px] text-purple-800">
-              <div className="font-bold flex items-center gap-1 mb-0.5">
-                <Lock className="w-3.5 h-3.5 text-purple-600" />
-                Attendance Role Active
-              </div>
-              <p className="text-purple-700 leading-snug">
-                You are logged in as Attendance Staff. Student registration and course management are restricted to Admin.
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Database & Supabase Status Card */}

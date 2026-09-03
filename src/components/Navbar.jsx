@@ -74,13 +74,13 @@ export default function Navbar({
                   Global Skill Education
                 </span>
                 <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border ${
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold border ${
                     isAdmin
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                       : 'bg-purple-50 text-purple-700 border-purple-200'
                   }`}
                 >
-                  {isAdmin ? 'Admin' : 'Attendance Staff'}
+                  {isAdmin ? 'Admin' : displayName}
                 </span>
               </div>
             </div>
