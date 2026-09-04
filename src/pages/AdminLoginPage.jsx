@@ -10,6 +10,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function AdminLoginPage({ onLoginSuccess }) {
   const { signIn, signOut } = useAuth();
@@ -27,7 +28,31 @@ export default function AdminLoginPage({ onLoginSuccess }) {
     const exactPassword = password; // Never trim password
     try {
       const result = await signIn(cleanEmail, exactPassword);
-      const userRole = result?.profile?.role || '';
+
+      // Profile might be null if database tables aren't set up yet
+      let userRole = result?.profile?.role || '';
+
+      // If profile didn't load, try one more time directly
+      if (!userRole && result?.user?.id) {
+        try {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', result.user.id)
+            .maybeSingle();
+          userRole = prof?.role || '';
+        } catch {
+          // Database tables likely not created
+        }
+      }
+
+      if (!userRole) {
+        await signOut();
+        setError('Database tables abhi setup nahi hue hain. Supabase Dashboard → SQL Editor mein jaake setup SQL script run karein.');
+        setIsLoggingIn(false);
+        return;
+      }
+
       if (userRole !== 'admin') {
         await signOut();
         setError('Access Denied: Yeh Admin Portal hai. Staff login ke liye neeche diye link par jaaiye.');
@@ -39,6 +64,8 @@ export default function AdminLoginPage({ onLoginSuccess }) {
       const msg = err?.message || '';
       if (msg.toLowerCase().includes('invalid login credentials')) {
         setError('Email ya Password galat hai. Dobara check karein.');
+      } else if (msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('schema')) {
+        setError('Database setup incomplete hai. Supabase Dashboard → SQL Editor mein jaake setup SQL script run karein. Details: ' + msg);
       } else {
         setError(msg || 'Login fail hua. Dobara koshish karein.');
       }

@@ -156,7 +156,13 @@ export function AuthProvider({ children }) {
     if (data?.user) {
       setUser(data.user);
       setSession(data.session);
-      loadedProfile = await loadUserProfile(data.user.id, data.user.email);
+      try {
+        loadedProfile = await loadUserProfile(data.user.id, data.user.email);
+      } catch (profileErr) {
+        console.warn('Profile loading failed after login, will retry:', profileErr?.message);
+        // Profile load failed but auth succeeded — don't block login
+        // The onAuthStateChange handler will retry profile loading
+      }
     }
 
     return { ...data, profile: loadedProfile };
