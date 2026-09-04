@@ -48,14 +48,14 @@ export default function AdminLoginPage({ onLoginSuccess }) {
 
       if (!userRole) {
         await signOut();
-        setError('Database tables abhi setup nahi hue hain. Supabase Dashboard → SQL Editor mein jaake setup SQL script run karein.');
+        setError('Database tables are not set up yet. Please execute the setup SQL script in Supabase Dashboard → SQL Editor.');
         setIsLoggingIn(false);
         return;
       }
 
       if (userRole !== 'admin') {
         await signOut();
-        setError('Access Denied: Yeh Admin Portal hai. Staff login ke liye neeche diye link par jaaiye.');
+        setError('Access Denied: This is the Admin Portal. Please use the Staff Login link below.');
         setIsLoggingIn(false);
         return;
       }
@@ -63,11 +63,11 @@ export default function AdminLoginPage({ onLoginSuccess }) {
     } catch (err) {
       const msg = err?.message || '';
       if (msg.toLowerCase().includes('invalid login credentials')) {
-        setError('Email ya Password galat hai. Dobara check karein.');
+        setError('Invalid email or password. Please check your credentials and try again.');
       } else if (msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('schema')) {
-        setError('Database setup incomplete hai. Supabase Dashboard → SQL Editor mein jaake setup SQL script run karein. Details: ' + msg);
+        setError('Database setup is incomplete. Please execute the setup script in Supabase Dashboard → SQL Editor. Details: ' + msg);
       } else {
-        setError(msg || 'Login fail hua. Dobara koshish karein.');
+        setError(msg || 'Login failed. Please try again.');
       }
       setIsLoggingIn(false);
     }
@@ -90,7 +90,7 @@ export default function AdminLoginPage({ onLoginSuccess }) {
             </div>
             <div>
               <div className="text-white font-bold text-lg leading-tight">Admin Login</div>
-              <div className="text-blue-100 text-xs mt-0.5">Sirf Admin yahan login kar sakta hai</div>
+              <div className="text-blue-100 text-xs mt-0.5">Only administrators can log in here</div>
             </div>
           </div>
         </div>
@@ -142,10 +142,10 @@ export default function AdminLoginPage({ onLoginSuccess }) {
         </div>
         <div className="px-6 pb-5 text-center">
           <div className="pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-500 mb-2">Staff / Teacher hain?</p>
+            <p className="text-xs text-slate-500 mb-2">Are you a Staff / Teacher?</p>
             <a href="/staff" className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-600 hover:text-purple-800 transition-colors">
               <GraduationCap className="w-3.5 h-3.5" />
-              Staff Login Page par Jaaiye
+              Go to Staff Login Page
             </a>
           </div>
         </div>

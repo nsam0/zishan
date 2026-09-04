@@ -46,7 +46,7 @@ export default function StaffLoginPage({ onLoginSuccess }) {
 
       if (userRole && userRole !== 'attendance_staff') {
         await signOut();
-        setError('Access Denied: Yeh Staff Portal hai. Admin login ke liye upar diye link par jaaiye.');
+        setError('Access Denied: This is the Staff Portal. Please use the Admin Login link below.');
         setIsLoggingIn(false);
         return;
       }
@@ -54,11 +54,11 @@ export default function StaffLoginPage({ onLoginSuccess }) {
     } catch (err) {
       const msg = err?.message || '';
       if (msg.toLowerCase().includes('invalid login credentials') || msg.toLowerCase().includes('invalid_credentials')) {
-        setError('Email ya Password galat hai. Pehle Admin se account banwayein ya check karein.');
+        setError('Invalid email or password. Please check with your Administrator.');
       } else if (msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('schema')) {
-        setError('Database error: Account auth configuration incomplete hai. Niche diye SQL script se account fix karein.');
+        setError('Authentication error: Account credentials could not be verified. Please contact the Administrator.');
       } else {
-        setError(msg || 'Login fail hua. Dobara koshish karein.');
+        setError(msg || 'Login failed. Please try again.');
       }
       setIsLoggingIn(false);
     }
@@ -81,7 +81,7 @@ export default function StaffLoginPage({ onLoginSuccess }) {
             </div>
             <div>
               <div className="text-white font-bold text-lg leading-tight">Staff / Teacher Login</div>
-              <div className="text-purple-100 text-xs mt-0.5">Admin dwara diye gaye credentials se login karein</div>
+              <div className="text-purple-100 text-xs mt-0.5">Sign in using credentials provided by Administrator</div>
             </div>
           </div>
         </div>
@@ -131,15 +131,15 @@ export default function StaffLoginPage({ onLoginSuccess }) {
             </button>
           </form>
           <div className="mt-2 p-3 bg-purple-50 border border-purple-100 rounded-xl">
-            <p className="text-xs text-purple-800 text-center">Email aur Password Admin ne set kiye hain. Admin se lein.</p>
+            <p className="text-xs text-purple-800 text-center">Your login credentials are provided by the Administrator.</p>
           </div>
         </div>
         <div className="px-6 pb-5 text-center">
           <div className="pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-500 mb-2">Admin hain?</p>
+            <p className="text-xs text-slate-500 mb-2">Are you an Administrator?</p>
             <a href="/admin" className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
               <Shield className="w-3.5 h-3.5" />
-              Admin Login Page par Jaaiye
+              Go to Admin Login Page
             </a>
           </div>
         </div>

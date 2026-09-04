@@ -79,7 +79,7 @@ export default function SqlSetupModal({ isOpen, onClose, onVerified }) {
               <li>
                 Open your{' '}
                 <a
-                  href="https://supabase.com/dashboard/project/vznyiuhotopctbssnpjn/sql/new"
+                  href="https://supabase.com/dashboard/project/dixecnmjennqhdgehray/sql/new"
                   target="_blank"
                   rel="noreferrer"
                   className="font-semibold text-blue-600 underline inline-flex items-center gap-0.5 hover:text-blue-800"
@@ -128,7 +128,7 @@ export default function SqlSetupModal({ isOpen, onClose, onVerified }) {
         {/* Modal Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
           <a
-            href="https://supabase.com/dashboard/project/vznyiuhotopctbssnpjn/sql/new"
+            href="https://supabase.com/dashboard/project/dixecnmjennqhdgehray/sql/new"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800"

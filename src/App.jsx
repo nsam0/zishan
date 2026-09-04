@@ -70,7 +70,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <Loader2 className="w-9 h-9 text-blue-600 animate-spin mb-3" />
-        <p className="text-sm font-semibold text-slate-700">Session verify ho rahi hai...</p>
+        <p className="text-sm font-semibold text-slate-700">Verifying session...</p>
         <p className="text-xs text-slate-400 mt-1">Global Skill Education Portal</p>
       </div>
     );
@@ -89,7 +89,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <Loader2 className="w-9 h-9 text-blue-600 animate-spin mb-3" />
-        <p className="text-sm font-semibold text-slate-700">Profile load ho raha hai...</p>
+        <p className="text-sm font-semibold text-slate-700">Loading profile...</p>
         <p className="text-xs text-slate-400 mt-1">Global Skill Education Portal</p>
       </div>
     );
