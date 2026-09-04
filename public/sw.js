@@ -1,11 +1,14 @@
-const CACHE_NAME = 'gse-admin-v2-secure';
+const CACHE_NAME = 'gse-admin-v3-logo';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/logo.svg',
+  '/logo.png',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/favicon-32x32.png',
+  '/favicon-16x16.png'
 ];
 
 self.addEventListener('install', (event) => {

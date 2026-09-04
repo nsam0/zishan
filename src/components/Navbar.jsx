@@ -65,7 +65,7 @@ export default function Navbar({
 
             <div className="flex items-center gap-2.5">
               <img
-                src="/logo.svg"
+                src="/logo.png"
                 alt="Global Skill Education Logo"
                 className="w-9 h-9 object-contain drop-shadow-xs"
               />

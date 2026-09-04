@@ -67,7 +67,7 @@ export default function StaffLoginPage({ onLoginSuccess }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 flex flex-col items-center justify-center p-4">
       <div className="flex items-center gap-3 mb-8">
-        <img src="/logo.svg" alt="GSE Logo" className="w-12 h-12 object-contain drop-shadow-lg" />
+        <img src="/logo.png" alt="GSE Logo" className="w-12 h-12 object-contain drop-shadow-lg" />
         <div>
           <div className="text-white font-bold text-xl tracking-tight">Global Skill Education</div>
           <div className="text-purple-300 text-xs font-medium">Teacher / Staff Attendance Portal</div>
