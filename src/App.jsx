@@ -84,31 +84,40 @@ export default function App() {
     return <AdminLoginPage onLoginSuccess={() => setPortal('admin')} />;
   }
 
-  // ── 4. Logged in — wrong portal? Sign out ──────────────────────
-  if (profile) {
-    if (profile.role === 'attendance_staff' && portal === 'admin') {
-      signOut();
-      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-        </div>
-      );
-    }
-    if (profile.role === 'admin' && portal === 'staff') {
-      signOut();
-      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-        </div>
-      );
-    }
+  // ── 4. Session exists but profile not yet loaded → wait ────────
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <Loader2 className="w-9 h-9 text-blue-600 animate-spin mb-3" />
+        <p className="text-sm font-semibold text-slate-700">Profile load ho raha hai...</p>
+        <p className="text-xs text-slate-400 mt-1">Global Skill Education Portal</p>
+      </div>
+    );
   }
 
-  // ── 5. Render correct dashboard ────────────────────────────────
+  // ── 5. Logged in — wrong portal? Sign out ──────────────────────
+  if (profile.role === 'attendance_staff' && portal === 'admin') {
+    signOut();
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+  if (profile.role === 'admin' && portal === 'staff') {
+    signOut();
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  // ── 6. Render correct dashboard ────────────────────────────────
   if (isAdmin) return <AdminApp />;
   if (isStaff) return <StaffApp assignedSubjects={assignedSubjects} />;
 
-  // Fallback loading (profile still loading)
+  // Fallback loading
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
       <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
