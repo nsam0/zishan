@@ -10,6 +10,7 @@ import {
   Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function StaffLoginPage({ onLoginSuccess }) {
   const { signIn, signOut } = useAuth();
@@ -27,8 +28,23 @@ export default function StaffLoginPage({ onLoginSuccess }) {
     const exactPassword = password; // Never trim password
     try {
       const result = await signIn(cleanEmail, exactPassword);
-      const userRole = result?.profile?.role || '';
-      if (userRole !== 'attendance_staff') {
+      let userRole = result?.profile?.role || '';
+
+      // Fallback: if profile not immediately ready in context, query directly
+      if (!userRole && result?.user?.id && supabase) {
+        try {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', result.user.id)
+            .maybeSingle();
+          userRole = prof?.role || '';
+        } catch {
+          // ignore
+        }
+      }
+
+      if (userRole && userRole !== 'attendance_staff') {
         await signOut();
         setError('Access Denied: Yeh Staff Portal hai. Admin login ke liye upar diye link par jaaiye.');
         setIsLoggingIn(false);
@@ -37,8 +53,10 @@ export default function StaffLoginPage({ onLoginSuccess }) {
       if (onLoginSuccess) onLoginSuccess();
     } catch (err) {
       const msg = err?.message || '';
-      if (msg.toLowerCase().includes('invalid login credentials')) {
-        setError('Email ya Password galat hai. Admin se check karein.');
+      if (msg.toLowerCase().includes('invalid login credentials') || msg.toLowerCase().includes('invalid_credentials')) {
+        setError('Email ya Password galat hai. Pehle Admin se account banwayein ya check karein.');
+      } else if (msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('schema')) {
+        setError('Database error: Account auth configuration incomplete hai. Niche diye SQL script se account fix karein.');
       } else {
         setError(msg || 'Login fail hua. Dobara koshish karein.');
       }
