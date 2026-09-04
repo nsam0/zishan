@@ -227,7 +227,16 @@ BEGIN
       raw_app_meta_data,
       raw_user_meta_data,
       created_at,
-      updated_at
+      updated_at,
+      confirmation_token,
+      recovery_token,
+      email_change_token_new,
+      email_change,
+      phone,
+      phone_change,
+      phone_change_token,
+      email_change_token_current,
+      reauthentication_token
     ) VALUES (
       '00000000-0000-0000-0000-000000000000',
       target_user_id,
@@ -239,7 +248,16 @@ BEGIN
       '{"provider":"email","providers":["email"]}'::jsonb,
       jsonb_build_object('full_name', staff_name, 'role', 'attendance_staff'),
       now(),
-      now()
+      now(),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      ''
     );
 
     INSERT INTO public.profiles (id, email, full_name, role)
@@ -249,6 +267,25 @@ BEGIN
         role = 'attendance_staff',
         updated_at = now();
   END IF;
+
+  -- Create identity in auth.identities
+  INSERT INTO auth.identities (
+    provider_id,
+    user_id,
+    identity_data,
+    provider,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) VALUES (
+    target_user_id::text,
+    target_user_id,
+    jsonb_build_object('sub', target_user_id::text, 'email', lower(trim(staff_email))),
+    'email',
+    now(),
+    now(),
+    now()
+  ) ON CONFLICT DO NOTHING;
 
   DELETE FROM public.staff_subject_assignments WHERE staff_id = target_user_id;
 
