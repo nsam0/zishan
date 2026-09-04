@@ -232,9 +232,6 @@ BEGIN
       recovery_token,
       email_change_token_new,
       email_change,
-      phone,
-      phone_change,
-      phone_change_token,
       email_change_token_current,
       reauthentication_token
     ) VALUES (
@@ -249,9 +246,6 @@ BEGIN
       jsonb_build_object('full_name', staff_name, 'role', 'attendance_staff'),
       now(),
       now(),
-      '',
-      '',
-      '',
       '',
       '',
       '',
